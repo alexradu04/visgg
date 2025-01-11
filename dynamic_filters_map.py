@@ -34,7 +34,7 @@ match st.session_state["theme"]:
         map_tiles = "CartoDB dark_matter"
 
 #Path to SQLite database
-sqlite_db = "C:\\dev\\visgg\\data\\railroad_incidents_cleaned_with_underscores.db"
+sqlite_db = "C:\\dev\\visgg\\data\\railroad_incidents_cleanedMUT.db"
 
 conn = sqlite3.connect(sqlite_db)
 
@@ -70,7 +70,7 @@ query = """
 SELECT R.latitude, R.longitud, R.totinj, R.totkld, C.Accident_Type,
        R.narr1, R.narr2, R.narr3, R.narr4, R.narr5, 
        R.narr6, R.narr7, R.narr8, R.narr9, R.narr10, 
-       R.narr11, R.narr12, R.narr13, R.narr14, R.narr15, R.state
+       R.narr11, R.narr12, R.narr13, R.narr14, R.narr15, R.state_name
 FROM Railroad_Incidents R
 LEFT JOIN Categorized_Incidents_By_ID C ON R.ID = C.ID
 LEFT JOIN Train_Speed_Categories S ON R.ID = S.ID
@@ -199,7 +199,7 @@ if clicked_data and clicked_data.get("last_clicked"):
 
         wantedState = str(clickedState) 
         print(wantedState)
-        state_data = filtered_data[filtered_data['state'] == wantedState]
+        state_data = filtered_data[filtered_data['state_name'] == wantedState]
 
         # 1. Total Number of Incidents
         total_incidents = state_data.shape[0]
