@@ -1,9 +1,11 @@
+import os
 import streamlit as st
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster, HeatMap
 from streamlit_folium import st_folium
 import sqlite3
+from states_json_util import find_state
 
 #Set Streamlit page config
 st.set_page_config(layout="wide", page_title="Dynamic Railroad Incident Map")
@@ -13,17 +15,26 @@ if "theme" not in st.session_state:
     st.session_state["theme"] = "dark"
 
 def toggle_theme():
-    st.session_state["theme"] = "light" if st.session_state["theme"] == "dark" else "dark"
+    st.session_state["theme"] = "light" if (st.session_state["theme"] == "dark" or st.session_state["theme"] == "states") else "dark"
 
 #Add a button to toggle themes
 if st.sidebar.button("Toggle Dark/Light Theme"):
     toggle_theme()
 
 #Set map tiles based on the selected theme
-map_tiles = "CartoDB dark_matter" if st.session_state["theme"] == "dark" else "CartoDB positron"
+
+match st.session_state["theme"]:
+    case "dark":
+        map_tiles = "CartoDB dark_matter"
+    case "light":
+        map_tiles = "CartoDB positron"
+    case "states":
+        map_tiles = "CartoDB positron"
+    case _:
+        map_tiles = "CartoDB dark_matter"
 
 #Path to SQLite database
-sqlite_db = "C:\\Users\\yongj\\OneDrive\\Desktop\\Visualization Project\\Railroad Incidents\\railroad_incidents_cleaned_with_underscores.db"
+sqlite_db = "C:\\dev\\visgg\\data\\railroad_incidents_cleaned_with_underscores.db"
 
 conn = sqlite3.connect(sqlite_db)
 
@@ -59,7 +70,7 @@ query = """
 SELECT R.latitude, R.longitud, R.totinj, R.totkld, C.Accident_Type,
        R.narr1, R.narr2, R.narr3, R.narr4, R.narr5, 
        R.narr6, R.narr7, R.narr8, R.narr9, R.narr10, 
-       R.narr11, R.narr12, R.narr13, R.narr14, R.narr15
+       R.narr11, R.narr12, R.narr13, R.narr14, R.narr15, R.state
 FROM Railroad_Incidents R
 LEFT JOIN Categorized_Incidents_By_ID C ON R.ID = C.ID
 LEFT JOIN Train_Speed_Categories S ON R.ID = S.ID
@@ -176,13 +187,60 @@ else:
 clicked_data = st_folium(m, width=1100, height=800)
 
 #Handle click events in both modes
-if clicked_data and clicked_data.get("last_object_clicked"):
-    lat = clicked_data["last_object_clicked"]["lat"]
-    lon = clicked_data["last_object_clicked"]["lng"]
+if clicked_data and clicked_data.get("last_clicked"):
+    lat = clicked_data["last_clicked"]["lat"]
+    lon = clicked_data["last_clicked"]["lng"]
 
     if mode == "State Details":
         #In State Mode: Show placeholder details for clicked state
+        clickedState = find_state(lat, lon)
         st.sidebar.write(f"### Clicked State Coordinates: ({lat}, {lon})")
+        st.sidebar.write(f"### Clicked State : {clickedState}")
+
+        wantedState = str(clickedState) 
+        print(wantedState)
+        state_data = filtered_data[filtered_data['state'] == wantedState]
+
+        # 1. Total Number of Incidents
+        total_incidents = state_data.shape[0]
+        # print(f"Total incidents in state {wantedState}: {total_incidents}")
+        st.sidebar.write(f"Total incidents in state {wantedState}: {total_incidents}")
+
+        # 2. Average Train Speed During Incidents (if train_speed column exists)
+        if 'train_speed' in state_data.columns:
+            avg_speed = state_data['train_speed'].mean()
+            # print(f"Average train speed in state {wantedState}: {avg_speed:.2f} (units)")
+            st.sidebar.write(f"Average train speed in state {wantedState}: {avg_speed:.2f} (units)")
+        else:
+            # print("The train_speed column is not available in the data.")
+            st.sidebar.write("The train_speed column is not available in the data.")
+
+        # 3. Number of Fatalities and Injuries
+        total_fatalities = state_data['totkld'].sum()
+        total_injuries = state_data['totinj'].sum()
+        # print(f"Total fatalities in state {wantedState}: {total_fatalities}")
+        st.sidebar.write(f"Total fatalities in state {wantedState}: {total_fatalities}")
+        # print(f"Total injuries in state {wantedState}: {total_injuries}")
+        st.sidebar.write(f"Total injuries in state {wantedState}: {total_injuries}")
+
+        # 4. Most Common Weather Condition (if weather_condition column exists)
+        if 'weather_condition' in state_data.columns:
+            most_common_weather = (
+                state_data['weather_condition']
+                .value_counts()
+                .idxmax()
+            )
+            # print(f"Most common weather condition in state {wantedState}: {most_common_weather}")
+            st.write(f"Most common weather condition in state {wantedState}: {most_common_weather}")
+        else:
+            # print("The weather_condition column is not available in the data.")
+            st.write("The weather_condition column is not available in the data.")
+
+        # 5. Incident Types Breakdown
+        incident_breakdown = state_data['Accident_Type'].value_counts()
+        # print(f"Incident types breakdown in state {wantedState}:\n{incident_breakdown}")
+        st.sidebar.write(f"Incident types breakdown in state {wantedState}:\n{incident_breakdown}")
+
         st.sidebar.write("Placeholder for state-level details.")
     else:
         #In Incident Mode: Show details for clicked marker in the sidebar
