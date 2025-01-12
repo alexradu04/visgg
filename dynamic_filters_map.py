@@ -59,11 +59,12 @@ match st.session_state["theme"]:
 #Path to SQLite database
 sqlite_db = "C://dev//visgg//data//railroad_incidents_cleanedMUT.db"
 
-conn = sqlite3.connect(sqlite_db)
 
 def get_filter_options(table_name, column_name):
+    conn = sqlite3.connect(sqlite_db)
     query = f"SELECT DISTINCT {column_name} FROM {table_name};"
     return [row[0] for row in conn.execute(query).fetchall()]
+    conn.close()
 
 #Loading filter options
 speed_categories = get_filter_options("Train_Speed_Categories", "Speed_Category")
@@ -134,16 +135,23 @@ if selected_injury != "All":
 if selected_damage != "All":
     query += f" AND E.Damage_Category = '{selected_damage}'"
 
-query += " LIMIT 100;"
+query += " LIMIT 10000;"
 
-try:
-    filtered_data = pd.read_sql_query(query, conn)
-except sqlite3.OperationalError as e:
-    st.error(f"Error executing query: {e}")
+@st.cache_data
+def do_db_query(query):
+    conn = sqlite3.connect(sqlite_db)
+    try:
+        filtered_data = pd.read_sql_query(query, conn)
+    except sqlite3.OperationalError as e:
+        st.error(f"Error executing query: {e}")
+        conn.close()
+        st.stop()
+    return filtered_data
     conn.close()
-    st.stop()
 
-conn.close()
+filtered_data = do_db_query(query)
+
+
 
 #Combine narrative columns
 def combine_narratives(row):
