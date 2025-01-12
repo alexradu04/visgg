@@ -57,7 +57,7 @@ match st.session_state["theme"]:
         map_tiles = "CartoDB dark_matter"
 
 #Path to SQLite database
-sqlite_db = "C://Users//yongj//OneDrive//Desktop//Visualization Project//railroad_incidents_cleanedMUT.db"
+sqlite_db = "C://dev//visgg//data//railroad_incidents_cleanedMUT.db"
 
 conn = sqlite3.connect(sqlite_db)
 
@@ -225,6 +225,7 @@ else:
 clicked_data = st_folium(m, use_container_width=True, height=900)
 
 with summary_container:
+
     if clicked_data and clicked_data.get("last_clicked"):
         lat = clicked_data["last_clicked"]["lat"]
         lon = clicked_data["last_clicked"]["lng"]
@@ -272,8 +273,10 @@ with summary_container:
             st.write(f"Incident types breakdown in state {wantedState}:\n{incident_breakdown}")
 
             st.write("Placeholder for state-level details.")
-        else:
+    if clicked_data and clicked_data.get("last_object_clicked"):
             #In Incident Mode: Show details for clicked marker
+            lat = clicked_data["last_object_clicked"]["lat"]
+            lon = clicked_data["last_object_clicked"]["lng"]
             for marker in marker_data:
                 if marker["lat"] == lat and marker["lon"] == lon:
                     with incident_details_placeholder.container():
