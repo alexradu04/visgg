@@ -587,8 +587,142 @@ if visualization_mode == "Multi-Scatter Plots":
                 st.info("Incident filter cleared. Map is reset to the default view.")
 
 elif visualization_mode == "Radar Plot":
-    st.markdown("### Radar Plot - *Coming Soon!*")
-    st.write("Radar Plot functionality is not yet implemented.")
+    ############################
+    # Radar Plot Implementation
+    # with a Better Balanced Normalization (log + min–max)
+    # and STATE-BASED interactivity
+    ############################
+
+    st.markdown("### Interactive Radar Plot (Balanced)")
+
+    # 1. If in State Details mode and a state is clicked, filter to that state.
+    if mode == "State Details" and clicked_data and clicked_data.get("last_clicked"):
+        lat = clicked_data["last_clicked"]["lat"]
+        lon = clicked_data["last_clicked"]["lng"]
+        wantedState = str(find_state(lat, lon))
+        radar_data = filtered_data[filtered_data['state_name'] == wantedState]
+    else:
+        # Otherwise, use all filtered data
+        radar_data = filtered_data.copy()
+
+    # Safety check for empty data
+    if radar_data.empty:
+        st.warning("No data available for the selected filters and/or clicked state to plot the Radar Chart.")
+    else:
+        # Columns of interest
+        attrs = {
+            "trnspd": "Average Speed (mph)",
+            "trkdmg": "Track Damage ($)",
+            "caskld": "Deaths",
+            "casinj": "Injuries",
+            "eqpdmg": "Equipment Damage ($)"
+        }
+
+        # This dict will hold the final single radar value (0–1) for each attribute.
+        normalized_values = {}
+
+        import numpy as np
+
+        # 2. For each attribute, compute a "balanced" average on a log+min–max scale
+        for col in attrs.keys():
+            # Extract column data, drop NaNs
+            col_data = radar_data[col].dropna()
+            if col_data.empty:
+                normalized_values[col] = 0.0
+                continue
+
+            # Shift so smallest value is ≥ 1 for log transform
+            min_val_raw = col_data.min()
+            shift_amount = 1 - min_val_raw if min_val_raw < 1 else 0
+            col_data_shifted = col_data + shift_amount
+
+            # Log transform
+            col_data_log = np.log(col_data_shifted)
+
+            # Min–max on the logged data
+            col_log_min = col_data_log.min()
+            col_log_max = col_data_log.max()
+            if col_log_min == col_log_max:
+                col_data_norm = [0.0] * len(col_data_log)
+            else:
+                col_data_norm = (col_data_log - col_log_min) / (col_log_max - col_log_min)
+
+            # Final single value = mean of normalized distribution
+            col_norm_mean = np.mean(col_data_norm)
+            normalized_values[col] = col_norm_mean
+
+        # 3. Prepare categories & single normalized value for each attribute
+        radar_categories = list(attrs.values())
+        radar_values = [normalized_values[col] for col in attrs.keys()]
+
+        # 4. Create radar chart with Plotly's go.Scatterpolar
+        fig = go.Figure()
+        fig.add_trace(go.Scatterpolar(
+            r=radar_values,
+            theta=radar_categories,
+            fill='toself',
+            fillcolor='rgba(0, 180, 255, 0.3)',
+            line_color='rgba(0, 180, 255, 1)',
+            marker=dict(symbol='circle', size=6, color='rgba(0, 180, 255, 1)'),
+            hovertemplate="<b>%{theta}</b>: %{r:.2f}<extra></extra>"
+        ))
+
+        # 5. Style the Radar Plot (Dark Polygon Style)
+        fig.update_layout(
+            polar=dict(
+                bgcolor='#1E1E1E',
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1],
+                    showline=True,
+                    linewidth=2,
+                    linecolor='rgba(255,255,255,0.2)',
+                    showgrid=True,
+                    gridcolor='rgba(255,255,255,0.2)',
+                    gridwidth=1,
+                    tickfont=dict(color='#FFFFFF'),
+                    tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0]
+                ),
+                angularaxis=dict(
+                    visible=True,
+                    showline=True,
+                    linewidth=1,
+                    linecolor='rgba(255,255,255,0.2)',
+                    showgrid=True,
+                    gridcolor='rgba(255,255,255,0.2)',
+                    tickfont=dict(color='#FFFFFF'),
+                    rotation=90,
+                ),
+            ),
+            paper_bgcolor='#1E1E1E',
+            plot_bgcolor='#1E1E1E',
+            font=dict(color='#FFFFFF'),
+            showlegend=False,
+            margin=dict(l=60, r=60, t=120, b=60),
+        )
+
+        # Title in range [0,1] for 'y'
+        chart_title = "<b>Balanced Radar Plot</b>"
+        if mode == "State Details" and not radar_data.empty:
+            # Optionally show the state name in the title if you like
+            state_name = radar_data['state_name'].iloc[0]
+            chart_title += f"<br>{state_name}"
+
+        fig.update_layout(
+            title=dict(
+                text=chart_title,
+                x=0.5,
+                y=0.95,
+                xanchor='center',
+                yanchor='top',
+                font=dict(size=18)
+            )
+        )
+
+        # 6. Display the chart
+        st.plotly_chart(fig, use_container_width=True)
+
+
 
 elif visualization_mode == "Line Chart":
     st.markdown("### Line Chart - *Coming Soon!*")
