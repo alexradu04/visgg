@@ -83,9 +83,10 @@ damage_categories = get_filter_options("Equipment_Damage_Categories", "Damage_Ca
 
 # Sidebar dropdown for visualization mode
 st.sidebar.title("Visualization Mode")
+# ADDED: 'Bar Chart' to the list
 visualization_mode = st.sidebar.selectbox(
     "Select Visualization", 
-    ["Multi-Scatter Plots", "Radar Plot", "Line Chart"]
+    ["Multi-Scatter Plots", "Radar Plot", "Line Chart", "Bar Chart"]
 )
 
 # Sidebar dropdown for selecting "Incident" or "State" detail mode
@@ -131,10 +132,12 @@ show_heatmap = st.sidebar.checkbox("Show Heatmap")
 # SQL query based on filters
 query = """
 SELECT R.latitude, R.longitud, R.trnspd, R.eqpdmg, R.trkdmg, R.caskld, R.casinj,
-       C.Accident_Type, R.narr1, R.narr2, R.narr3, R.narr4, R.narr5, 
+       C.Accident_Type, 
+       R.narr1, R.narr2, R.narr3, R.narr4, R.narr5, 
        R.narr6, R.narr7, R.narr8, R.narr9, R.narr10, 
        R.narr11, R.narr12, R.narr13, R.narr14, R.narr15, 
-       R.state_name, W.Weather_Condition
+       R.state_name, W.Weather_Condition,
+       Y.Year_Group AS year
 FROM Railroad_Incidents R
 LEFT JOIN Categorized_Incidents_By_ID C ON R.ID = C.ID
 LEFT JOIN Train_Speed_Categories S ON R.ID = S.ID
@@ -186,6 +189,9 @@ filtered_data["description"] = filtered_data.apply(combine_narratives, axis=1)
 # Convert relevant columns to numeric
 for col in ["trnspd", "eqpdmg", "trkdmg", "caskld", "casinj"]:
     filtered_data[col] = pd.to_numeric(filtered_data[col], errors='coerce')
+
+# Convert 'year' to numeric if needed
+filtered_data["year"] = pd.to_numeric(filtered_data["year"], errors='coerce')
 
 ###############################################################################
 # Let user choose color dimension
@@ -381,7 +387,11 @@ with summary_container:
         else:
             st.warning("No incident data found for that location.")
 
-# 2x2 Scatter Plots (Equipment & Track vs Speed, then Killed & Injured vs Speed)
+################################################################################
+# Visualization Modes
+################################################################################
+
+# 1) Multi-Scatter
 if visualization_mode == "Multi-Scatter Plots":
     st.markdown("## Multi-Scatter Plots: Damage, Fatalities, Injuries vs. Speed")
 
@@ -415,11 +425,6 @@ if visualization_mode == "Multi-Scatter Plots":
                 shared_yaxes=False
             )
 
-            # ------------------------------------------------------------------
-            # NEW: Single-legend approach. We create separate traces per category
-            # and place them in the correct subplot. This way we get a single
-            # combined legend for all 4 scatterplots.
-            # ------------------------------------------------------------------
             used_categories = set()
             unique_categories = chart_data[map_color_dimension].unique()
 
@@ -427,7 +432,7 @@ if visualization_mode == "Multi-Scatter Plots":
                 subdf = chart_data[chart_data[map_color_dimension] == cat_val]
                 cat_color = color_map.get(cat_val, "#808080")
 
-                # 1) Equipment Damage vs Speed (top-left)
+                # Equipment vs Speed
                 eqp_trace = go.Scatter(
                     x=subdf["trnspd"],
                     y=subdf["eqpdmg"],
@@ -443,13 +448,13 @@ if visualization_mode == "Multi-Scatter Plots":
                     ),
                     customdata=[cat_val]*len(subdf),
                     meta=list(zip(subdf["latitude"], subdf["longitud"])),
-                    name=str(cat_val),              # Legend name
-                    legendgroup=str(cat_val),       # Group so it appears as one legend item
-                    showlegend=(cat_val not in used_categories)  # Only show once
+                    name=str(cat_val),
+                    legendgroup=str(cat_val),
+                    showlegend=(cat_val not in used_categories)
                 )
                 fig.add_trace(eqp_trace, row=1, col=1)
 
-                # 2) Track Damage vs Speed (top-right)
+                # Track vs Speed
                 trk_trace = go.Scatter(
                     x=subdf["trnspd"],
                     y=subdf["trkdmg"],
@@ -471,7 +476,7 @@ if visualization_mode == "Multi-Scatter Plots":
                 )
                 fig.add_trace(trk_trace, row=1, col=2)
 
-                # 3) Fatalities vs Speed (bottom-left)
+                # Fatalities vs Speed
                 fat_trace = go.Scatter(
                     x=subdf["trnspd"],
                     y=subdf["caskld"],
@@ -493,7 +498,7 @@ if visualization_mode == "Multi-Scatter Plots":
                 )
                 fig.add_trace(fat_trace, row=2, col=1)
 
-                # 4) Injuries vs Speed (bottom-right)
+                # Injuries vs Speed
                 inj_trace = go.Scatter(
                     x=subdf["trnspd"],
                     y=subdf["casinj"],
@@ -515,8 +520,6 @@ if visualization_mode == "Multi-Scatter Plots":
                 )
                 fig.add_trace(inj_trace, row=2, col=2)
 
-                # Mark this category as used so only the first trace for each category
-                # shows the legend item.
                 used_categories.add(cat_val)
 
             # Update axes titles
@@ -529,16 +532,16 @@ if visualization_mode == "Multi-Scatter Plots":
             fig.update_xaxes(title_text="Train Speed (mph)", row=2, col=2)
             fig.update_yaxes(title_text="Injuries", row=2, col=2)
 
-            # Make point-clicking more precise
+            # Layout
             fig.update_layout(
                 title_text=f"Damage, Fatalities & Injuries vs. Speed{scatter_title_suffix}",
                 plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
                 paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
                 font_color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000',
-                hovermode="closest",            # Ensures the nearest data point is picked
-                clickmode="event+select",       # Ensures point selection is by the actual point
+                hovermode="closest",
+                clickmode="event+select",
                 legend=dict(
-                    x=1.02,  # shift legend to the right
+                    x=1.02,
                     y=1.0,
                     xanchor="left",
                     yanchor="top",
@@ -554,27 +557,16 @@ if visualization_mode == "Multi-Scatter Plots":
                 click_event=True,
                 hover_event=False,
                 select_event=False,
-                override_height=800,  # taller for 2x2 layout
+                override_height=800,
                 override_width="100%"
             )
 
-            # (REMOVED the extra st.plotly_chart(...) to avoid duplication)
-
-            # If the user clicked a point, we center the map and (if in State mode) swap to Incident mode
+            # If the user clicked a point, we center the map
             if selected_points:
                 point_index = selected_points[0]["pointIndex"]
-                # Retrieve the subplot data from the *actual trace* they clicked
                 trace_index = selected_points[0]["curveNumber"]
-                # The clicked curve belongs to the trace among those we added.
-
-                # Because we have multiple categories in multiple subplots,
-                # we can figure out which subset (subdf) they clicked from "meta".
-                # Plotly returns the same 'pointIndex' for the trace. Let's pull the lat/lon from fig.data[trace_index].meta
-
-                # trace_index is the index in fig.data. We'll get the lat/lon from there.
                 lat_val = float(fig.data[trace_index].meta[point_index][0])
                 lon_val = float(fig.data[trace_index].meta[point_index][1])
-
                 st.session_state["selected_incident"] = (lat_val, lon_val)
                 # If currently in State mode, switch to Incident mode
                 if st.session_state["mode"] == "State Details":
@@ -586,147 +578,248 @@ if visualization_mode == "Multi-Scatter Plots":
                 st.session_state["selected_incident"] = None
                 st.info("Incident filter cleared. Map is reset to the default view.")
 
+# 2) Radar Plot
 elif visualization_mode == "Radar Plot":
-    ############################
-    # Radar Plot Implementation
-    # with a Better Balanced Normalization (log + min–max)
-    # and STATE-BASED interactivity
-    ############################
+    ######################################################################
+    # Radar Plot Implementation with a Comparison State in "State Details"
+    ######################################################################
+    st.markdown("### Interactive Radar Plot (Balanced + Comparison)")
 
-    st.markdown("### Interactive Radar Plot (Balanced)")
+    if st.session_state["mode"] == "State Details":
+        if st.session_state["clicked_state"]:
+            base_state = st.session_state["clicked_state"]
+            base_data = filtered_data[filtered_data['state_name'] == base_state]
 
-    # 1. If in State Details mode and a state is clicked, filter to that state.
-    if mode == "State Details" and clicked_data and clicked_data.get("last_clicked"):
-        lat = clicked_data["last_clicked"]["lat"]
-        lon = clicked_data["last_clicked"]["lng"]
-        wantedState = str(find_state(lat, lon))
-        radar_data = filtered_data[filtered_data['state_name'] == wantedState]
-    else:
-        # Otherwise, use all filtered data
-        radar_data = filtered_data.copy()
-
-    # Safety check for empty data
-    if radar_data.empty:
-        st.warning("No data available for the selected filters and/or clicked state to plot the Radar Chart.")
-    else:
-        # Columns of interest
-        attrs = {
-            "trnspd": "Average Speed (mph)",
-            "trkdmg": "Track Damage ($)",
-            "caskld": "Deaths",
-            "casinj": "Injuries",
-            "eqpdmg": "Equipment Damage ($)"
-        }
-
-        # This dict will hold the final single radar value (0–1) for each attribute.
-        normalized_values = {}
-
-        import numpy as np
-
-        # 2. For each attribute, compute a "balanced" average on a log+min–max scale
-        for col in attrs.keys():
-            # Extract column data, drop NaNs
-            col_data = radar_data[col].dropna()
-            if col_data.empty:
-                normalized_values[col] = 0.0
-                continue
-
-            # Shift so smallest value is ≥ 1 for log transform
-            min_val_raw = col_data.min()
-            shift_amount = 1 - min_val_raw if min_val_raw < 1 else 0
-            col_data_shifted = col_data + shift_amount
-
-            # Log transform
-            col_data_log = np.log(col_data_shifted)
-
-            # Min–max on the logged data
-            col_log_min = col_data_log.min()
-            col_log_max = col_data_log.max()
-            if col_log_min == col_log_max:
-                col_data_norm = [0.0] * len(col_data_log)
-            else:
-                col_data_norm = (col_data_log - col_log_min) / (col_log_max - col_log_min)
-
-            # Final single value = mean of normalized distribution
-            col_norm_mean = np.mean(col_data_norm)
-            normalized_values[col] = col_norm_mean
-
-        # 3. Prepare categories & single normalized value for each attribute
-        radar_categories = list(attrs.values())
-        radar_values = [normalized_values[col] for col in attrs.keys()]
-
-        # 4. Create radar chart with Plotly's go.Scatterpolar
-        fig = go.Figure()
-        fig.add_trace(go.Scatterpolar(
-            r=radar_values,
-            theta=radar_categories,
-            fill='toself',
-            fillcolor='rgba(0, 180, 255, 0.3)',
-            line_color='rgba(0, 180, 255, 1)',
-            marker=dict(symbol='circle', size=6, color='rgba(0, 180, 255, 1)'),
-            hovertemplate="<b>%{theta}</b>: %{r:.2f}<extra></extra>"
-        ))
-
-        # 5. Style the Radar Plot (Dark Polygon Style)
-        fig.update_layout(
-            polar=dict(
-                bgcolor='#1E1E1E',
-                radialaxis=dict(
-                    visible=True,
-                    range=[0, 1],
-                    showline=True,
-                    linewidth=2,
-                    linecolor='rgba(255,255,255,0.2)',
-                    showgrid=True,
-                    gridcolor='rgba(255,255,255,0.2)',
-                    gridwidth=1,
-                    tickfont=dict(color='#FFFFFF'),
-                    tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0]
-                ),
-                angularaxis=dict(
-                    visible=True,
-                    showline=True,
-                    linewidth=1,
-                    linecolor='rgba(255,255,255,0.2)',
-                    showgrid=True,
-                    gridcolor='rgba(255,255,255,0.2)',
-                    tickfont=dict(color='#FFFFFF'),
-                    rotation=90,
-                ),
-            ),
-            paper_bgcolor='#1E1E1E',
-            plot_bgcolor='#1E1E1E',
-            font=dict(color='#FFFFFF'),
-            showlegend=False,
-            margin=dict(l=60, r=60, t=120, b=60),
-        )
-
-        # Title in range [0,1] for 'y'
-        chart_title = "<b>Balanced Radar Plot</b>"
-        if mode == "State Details" and not radar_data.empty:
-            # Optionally show the state name in the title if you like
-            state_name = radar_data['state_name'].iloc[0]
-            chart_title += f"<br>{state_name}"
-
-        fig.update_layout(
-            title=dict(
-                text=chart_title,
-                x=0.5,
-                y=0.95,
-                xanchor='center',
-                yanchor='top',
-                font=dict(size=18)
+            # Provide a dropdown to pick a comparison state
+            all_states = sorted(filtered_data['state_name'].dropna().unique())
+            comparison_state = st.sidebar.selectbox(
+                "Compare with another State",
+                ["None"] + all_states,
+                index=0
             )
-        )
 
-        # 6. Display the chart
+            import numpy as np
+
+            def compute_radar_values(state_df):
+                """Compute normalized (0-1) radar values for the given state data using log+min–max transform."""
+                if state_df.empty:
+                    return None
+
+                attrs = {
+                    "trnspd": "Average Speed (mph)",
+                    "trkdmg": "Track Damage ($)",
+                    "caskld": "Deaths",
+                    "casinj": "Injuries",
+                    "eqpdmg": "Equipment Damage ($)"
+                }
+                normalized_values = {}
+
+                for col in attrs.keys():
+                    col_data = state_df[col].dropna()
+                    if col_data.empty:
+                        normalized_values[col] = 0.0
+                        continue
+
+                    min_val_raw = col_data.min()
+                    shift_amount = 1 - min_val_raw if min_val_raw < 1 else 0
+                    col_data_shifted = col_data + shift_amount
+
+                    col_data_log = np.log(col_data_shifted)
+                    col_log_min, col_log_max = col_data_log.min(), col_data_log.max()
+
+                    if col_log_min == col_log_max:
+                        col_data_norm = 0.0
+                    else:
+                        col_data_norm = (col_data_log - col_log_min) / (col_log_max - col_log_min)
+
+                    if isinstance(col_data_norm, float):
+                        col_norm_mean = col_data_norm
+                    else:
+                        col_norm_mean = col_data_norm.mean()
+
+                    normalized_values[col] = col_norm_mean
+
+                return normalized_values
+
+            base_radar_dict = compute_radar_values(base_data)
+
+            if not base_radar_dict:
+                st.warning(f"No data available for {base_state} to plot the Radar Chart.")
+            else:
+                attrs_order = ["trnspd", "trkdmg", "caskld", "casinj", "eqpdmg"]
+                attr_labels = [
+                    "Average Speed (mph)",
+                    "Track Damage ($)",
+                    "Deaths",
+                    "Injuries",
+                    "Equipment Damage ($)"
+                ]
+                base_radar_values = [base_radar_dict[a] for a in attrs_order]
+
+                fig = go.Figure()
+                # Add base state
+                fig.add_trace(go.Scatterpolar(
+                    r=base_radar_values,
+                    theta=attr_labels,
+                    fill='toself',
+                    fillcolor='rgba(0, 180, 255, 0.3)',
+                    line_color='rgba(0, 180, 255, 1)',
+                    marker=dict(symbol='circle', size=6, color='rgba(0, 180, 255, 1)'),
+                    name=f"{base_state}",
+                    hovertemplate="<b>%{theta}</b>: %{r:.2f}<extra></extra>"
+                ))
+
+                # If user chose a comparison state
+                if comparison_state != "None":
+                    comp_data = filtered_data[filtered_data['state_name'] == comparison_state]
+                    comp_radar_dict = compute_radar_values(comp_data)
+                    if comp_radar_dict:
+                        comp_radar_values = [comp_radar_dict[a] for a in attrs_order]
+                        fig.add_trace(go.Scatterpolar(
+                            r=comp_radar_values,
+                            theta=attr_labels,
+                            fill='toself',
+                            fillcolor='rgba(255, 100, 0, 0.3)',
+                            line_color='rgba(255, 100, 0, 1)',
+                            marker=dict(symbol='circle', size=6, color='rgba(255, 100, 0, 1)'),
+                            name=f"{comparison_state}",
+                            hovertemplate="<b>%{theta}</b>: %{r:.2f}<extra></extra>"
+                        ))
+                    else:
+                        st.warning(f"No data found for comparison state: {comparison_state}")
+
+                fig.update_layout(
+                    polar=dict(
+                        bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                        radialaxis=dict(
+                            visible=True,
+                            range=[0,1],
+                            showline=True,
+                            linewidth=2,
+                            linecolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            showgrid=True,
+                            gridcolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            gridwidth=1,
+                            tickfont=dict(color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'),
+                            tickvals=[0,0.2,0.4,0.6,0.8,1.0]
+                        ),
+                        angularaxis=dict(
+                            visible=True,
+                            showline=True,
+                            linewidth=1,
+                            linecolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            showgrid=True,
+                            gridcolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            tickfont=dict(color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'),
+                            rotation=90,
+                        ),
+                    ),
+                    paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                    plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                    font=dict(color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'),
+                    showlegend=True,
+                    margin=dict(l=60, r=60, t=120, b=60),
+                )
+
+                chart_title = f"<b>Balanced Radar Plot</b><br>{base_state}"
+                if comparison_state != "None":
+                    chart_title += f" vs {comparison_state}"
+
+                fig.update_layout(
+                    title=dict(
+                        text=chart_title,
+                        x=0.5,
+                        y=0.95,
+                        xanchor='center',
+                        yanchor='top',
+                        font=dict(size=18)
+                    )
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Click on a state marker in the map to see its Radar Plot.")
+    else:
+        st.warning("Radar Plot is most relevant in State Details mode. Switch to 'State Details' and select a state on the map.")
+
+# 3) Line Chart
+elif visualization_mode == "Line Chart":
+    st.markdown("### Line Chart: Incident Trends by Year")
+
+    # Let user select how to categorize lines: "Total Incidents" or "By Weather Condition"
+    line_category = st.radio("Line Chart Category", ["Total Incidents", "By Weather Condition"])
+
+    # We only have year in 'filtered_data["year"]'
+    line_data = filtered_data.dropna(subset=["year"])
+    if line_data.empty:
+        st.warning("No data available for the selected filters or no year data.")
+    else:
+        # Convert year to int if needed
+        line_data["year"] = line_data["year"].astype(int)
+
+        if line_category == "Total Incidents":
+            # Group by year => count incidents
+            year_counts = line_data.groupby("year").size().reset_index(name="count")
+            fig = px.line(
+                year_counts,
+                x="year",
+                y="count",
+                title="Total Incidents by Year",
+                markers=True
+            )
+            fig.update_traces(line_color="cyan")
+        else:
+            # By Weather Condition => group by year & weather => multiple lines
+            # If weather is missing, fill with "Unknown" to avoid confusion
+            line_data["Weather_Condition"] = line_data["Weather_Condition"].fillna("Unknown")
+            group_cols = ["year", "Weather_Condition"]
+            grouped = line_data.groupby(group_cols).size().reset_index(name="count")
+            fig = px.line(
+                grouped,
+                x="year",
+                y="count",
+                color="Weather_Condition",
+                title="Incidents by Year & Weather Condition",
+                markers=True
+            )
+
+        # Style
+        fig.update_layout(
+            plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+            paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+            font_color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'
+        )
         st.plotly_chart(fig, use_container_width=True)
 
+# 4) Bar Chart
+elif visualization_mode == "Bar Chart":
+    st.markdown("### Bar Chart: Incidents by State")
 
+    # We can do something as simple as grouping by state_name and counting
+    bar_data = filtered_data.dropna(subset=["state_name"])
+    if bar_data.empty:
+        st.warning("No data available for the selected filters or no valid state data.")
+    else:
+        # Group by state => count
+        state_counts = bar_data.groupby("state_name").size().reset_index(name="count")
+        # Sort descending
+        state_counts = state_counts.sort_values("count", ascending=False)
 
-elif visualization_mode == "Line Chart":
-    st.markdown("### Line Chart - *Coming Soon!*")
-    st.write("Line Chart functionality is not yet implemented.")
+        fig = px.bar(
+            state_counts,
+            x="state_name",
+            y="count",
+            title="Incidents by State",
+        )
+        # Style
+        fig.update_layout(
+            xaxis_title="State",
+            yaxis_title="Incident Count",
+            plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+            paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+            font_color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 # Add Help Dropdown Menu
 with st.expander("ℹ️ Help: How to Use the Railroad Incident Map"):
@@ -751,6 +844,17 @@ with st.expander("ℹ️ Help: How to Use the Railroad Incident Map"):
         4) Injuries vs Speed  
       - Click a point to "zoom" the Folium map and (if you’re in State Mode) automatically switch to Incident Mode.  
 
+    - **Radar Plot** (State Details mode):  
+      - Click a state marker, then choose "Radar Plot".  
+      - Compare that state's stats with another state by selecting from the dropdown in the sidebar.  
+
+    - **Line Chart**:  
+      - Shows incidents over time (by `Year_Group`).  
+      - "Total Incidents" for a single line, or "By Weather Condition" for multiple lines.  
+
+    - **Bar Chart**:  
+      - Shows incidents by state in descending order.  
+
     **Dynamic Filters**  
     - Refine results by Speed Category, Weather, Year, Death, Injury, Damage categories.  
 
@@ -766,4 +870,4 @@ with st.expander("ℹ️ Help: How to Use the Railroad Incident Map"):
 
 
 # Instructions to run the app
-#streamlit run "C:\Users\yongj\OneDrive\Desktop\Visualization Project\dynamic_filters_map.py"
+# streamlit run "C:\Users\yongj\OneDrive\Desktop\Visualization Project\dynamic_filters_map.py"
