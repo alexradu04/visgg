@@ -9,16 +9,11 @@ from states_json_util import find_state
 import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-
-# NEW: Import streamlit-plotly-events for click interactivity
 from streamlit_plotly_events import plotly_events
 
-# Set Streamlit page config
 st.set_page_config(layout="wide", page_title="Dynamic Railroad Incident Map")
 
-################################################################################
-# Minimal CSS injection for a dark background in main area & sidebar.
-################################################################################
+# CSS for dark theme...
 st.markdown("""
     <style>
     /* Make the main background dark */
@@ -41,7 +36,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Initialize theme toggle
+
+# Toggle theme
 if "theme" not in st.session_state:
     st.session_state["theme"] = "dark"
 
@@ -52,18 +48,17 @@ def toggle_theme():
         else "dark"
     )
 
-# Add a button to toggle themes
 if st.sidebar.button("Toggle Dark/Light Theme"):
     toggle_theme()
 
-# Set map tiles based on the selected theme
+# Choose tile based on theme
 map_tiles = {
     "dark": "CartoDB dark_matter",
     "light": "CartoDB positron",
     "states": "CartoDB positron"
 }.get(st.session_state["theme"], "CartoDB dark_matter")
 
-# Path to SQLite database
+# Path to your SQLite database
 sqlite_db = r"C:\\Users\\yongj\\OneDrive\\Desktop\\Visualization Project\\railroad_incidents_cleanedMUT.db"
 
 def get_filter_options(table_name, column_name):
@@ -73,23 +68,21 @@ def get_filter_options(table_name, column_name):
     conn.close()
     return options
 
-# Sidebar filter options
+# Get distinct categories
 speed_categories = get_filter_options("Train_Speed_Categories", "Speed_Category")
 weather_conditions = get_filter_options("Weather_Conditions", "Weather_Condition")
-year_groups = get_filter_options("Year_Groups", "Year_Group")
 death_categories = get_filter_options("Death_Categories", "Death_Category")
 injury_categories = get_filter_options("Injury_Categories", "Injury_Category")
 damage_categories = get_filter_options("Equipment_Damage_Categories", "Damage_Category")
 
-# Sidebar dropdown for visualization mode
+# Sidebar for visualization mode
 st.sidebar.title("Visualization Mode")
-# ADDED: 'Bar Chart' to the list
 visualization_mode = st.sidebar.selectbox(
     "Select Visualization", 
     ["Multi-Scatter Plots", "Radar Plot", "Line Chart", "Bar Chart"]
 )
 
-# Sidebar dropdown for selecting "Incident" or "State" detail mode
+# Sidebar: "Incident" or "State" mode
 if "mode" not in st.session_state:
     st.session_state["mode"] = "Incident Details"
 
@@ -97,12 +90,11 @@ def switch_mode(new_mode):
     st.session_state["mode"] = new_mode
 
 mode_options = ["Incident Details", "State Details"]
-# We ensure the default session state value is used if none is set
 selected_mode = st.sidebar.selectbox("Select Mode", mode_options, index=mode_options.index(st.session_state["mode"]))
 if selected_mode != st.session_state["mode"]:
     switch_mode(selected_mode)
 
-# Summary container in the sidebar
+# Sidebar container for summary
 if st.session_state["mode"] == "State Details":
     st.sidebar.title("State Details")
     summary_container = st.sidebar.container()
@@ -110,16 +102,14 @@ else:
     st.sidebar.title("Incident Details")
     summary_container = st.sidebar.container()
 
-################################################################################
-# Two-column layout for filters
-################################################################################
+# Two columns for filters
 st.sidebar.title("Dynamic Filters")
 col1, col2 = st.sidebar.columns(2)
 
 with col1:
     selected_speed = st.selectbox("Speed Category", ["All"] + speed_categories)
     selected_weather = st.selectbox("Weather Condition", ["All"] + weather_conditions)
-    selected_year = st.selectbox("Year Group", ["All"] + year_groups)
+    selected_year = st.text_input("Filter by Year (e.g. 2015, or blank for all):", "")
 
 with col2:
     selected_death = st.selectbox("Death Category", ["All"] + death_categories)
@@ -129,20 +119,28 @@ with col2:
 enable_clustering = st.sidebar.checkbox("Enable Clustering", value=True)
 show_heatmap = st.sidebar.checkbox("Show Heatmap")
 
-# SQL query based on filters
+# Build the SQL query
 query = """
-SELECT R.latitude, R.longitud, R.trnspd, R.eqpdmg, R.trkdmg, R.caskld, R.casinj,
-       C.Accident_Type, 
-       R.narr1, R.narr2, R.narr3, R.narr4, R.narr5, 
-       R.narr6, R.narr7, R.narr8, R.narr9, R.narr10, 
-       R.narr11, R.narr12, R.narr13, R.narr14, R.narr15, 
-       R.state_name, W.Weather_Condition,
-       Y.Year_Group AS year
+SELECT 
+    R.latitude,
+    R.longitud,
+    R.trnspd,
+    R.eqpdmg,
+    R.trkdmg,
+    R.caskld,
+    R.casinj,
+    R.year,         /* <-- Make sure this matches the exact column name in your DB */
+    R.month,        /* <-- Same note for month */
+    C.Accident_Type,
+    R.narr1, R.narr2, R.narr3, R.narr4, R.narr5, 
+    R.narr6, R.narr7, R.narr8, R.narr9, R.narr10, 
+    R.narr11, R.narr12, R.narr13, R.narr14, R.narr15, 
+    R.state_name,
+    W.Weather_Condition
 FROM Railroad_Incidents R
 LEFT JOIN Categorized_Incidents_By_ID C ON R.ID = C.ID
 LEFT JOIN Train_Speed_Categories S ON R.ID = S.ID
 LEFT JOIN Weather_Conditions W ON R.ID = W.ID
-LEFT JOIN Year_Groups Y ON R.ID = Y.ID
 LEFT JOIN Death_Categories D ON R.ID = D.ID
 LEFT JOIN Injury_Categories I ON R.ID = I.ID
 LEFT JOIN Equipment_Damage_Categories E ON R.ID = E.ID
@@ -154,8 +152,11 @@ if selected_speed != "All":
     query += f" AND S.Speed_Category = '{selected_speed}'"
 if selected_weather != "All":
     query += f" AND W.Weather_Condition = '{selected_weather}'"
-if selected_year != "All":
-    query += f" AND Y.Year_Group = '{selected_year}'"
+if selected_year.strip():
+    # Filter by a single year
+    # If your "year" column is INT in the DB, numeric comparison is fine:
+    query += f" AND R.year = {selected_year.strip()}"
+
 if selected_death != "All":
     query += f" AND D.Death_Category = '{selected_death}'"
 if selected_injury != "All":
@@ -163,13 +164,14 @@ if selected_injury != "All":
 if selected_damage != "All":
     query += f" AND E.Damage_Category = '{selected_damage}'"
 
-query += " LIMIT 2000;"  # Increase limit if you like
+# Limit the result set to 1000 for performance
+query += " LIMIT 1000;"
 
 @st.cache_data
-def do_db_query(query):
+def do_db_query(sql_query):
     conn = sqlite3.connect(sqlite_db)
     try:
-        df = pd.read_sql_query(query, conn)
+        df = pd.read_sql_query(sql_query, conn)
     except sqlite3.OperationalError as e:
         st.error(f"Error executing query: {e}")
         conn.close()
@@ -186,16 +188,11 @@ def combine_narratives(row):
 
 filtered_data["description"] = filtered_data.apply(combine_narratives, axis=1)
 
-# Convert relevant columns to numeric
-for col in ["trnspd", "eqpdmg", "trkdmg", "caskld", "casinj"]:
+# Convert columns to numeric (if relevant)
+for col in ["trnspd", "eqpdmg", "trkdmg", "caskld", "casinj", "year", "month"]:
     filtered_data[col] = pd.to_numeric(filtered_data[col], errors='coerce')
 
-# Convert 'year' to numeric if needed
-filtered_data["year"] = pd.to_numeric(filtered_data["year"], errors='coerce')
-
-###############################################################################
 # Let user choose color dimension
-###############################################################################
 map_color_dimension = st.sidebar.selectbox(
     "Color Map Markers By", 
     ["Accident_Type", "Weather_Condition"], 
@@ -213,27 +210,24 @@ def build_unified_color_map(df, color_dimension):
 
 color_map = build_unified_color_map(filtered_data, map_color_dimension)
 
-###############################################################################
-# Session states
-###############################################################################
+# Session state for selected incidents/states
 if "selected_incident" not in st.session_state:
     st.session_state["selected_incident"] = None
-
 if "clicked_state" not in st.session_state:
     st.session_state["clicked_state"] = None
 
-###############################################################################
-# Create Folium map
-###############################################################################
-if st.session_state["selected_incident"] is not None:
-    center_lat, center_lon = st.session_state["selected_incident"]
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles=map_tiles)
-else:
-    m = folium.Map(location=[37.0902, -95.7129], zoom_start=5, tiles=map_tiles)
+# Build map
+def build_map_center():
+    if st.session_state["selected_incident"] is not None:
+        center_lat, center_lon = st.session_state["selected_incident"]
+        return [center_lat, center_lon], 13
+    else:
+        return [37.0902, -95.7129], 5
 
-###############################################################################
-# If in State Details mode, add an overlay label for the clicked state
-###############################################################################
+map_center, map_zoom = build_map_center()
+m = folium.Map(location=map_center, zoom_start=map_zoom, tiles=map_tiles)
+
+# If in State Details, optionally show a label for the clicked state
 if st.session_state["mode"] == "State Details" and st.session_state["clicked_state"]:
     title_html = f"""
         <div style="position: fixed; 
@@ -248,11 +242,9 @@ if st.session_state["mode"] == "State Details" and st.session_state["clicked_sta
     """
     m.get_root().html.add_child(folium.Element(title_html))
 
-###############################################################################
 # Add markers
-###############################################################################
 if st.session_state["mode"] == "State Details":
-    # Example state markers
+    # Simple placeholders for states
     if enable_clustering:
         marker_cluster = MarkerCluster().add_to(m)
     else:
@@ -270,7 +262,7 @@ if st.session_state["mode"] == "State Details":
         ).add_to(marker_cluster)
 
 else:
-    # Incident Mode: markers for incidents
+    # Incident mode => plot actual incidents
     if enable_clustering:
         marker_cluster = MarkerCluster().add_to(m)
     else:
@@ -301,24 +293,22 @@ else:
             tooltip="Click for details"
         ).add_to(marker_cluster)
 
-# Add heatmap if enabled
+# Heatmap
 if show_heatmap:
     heat_data = filtered_data[["latitude", "longitud"]].dropna().values.tolist()
     if heat_data:
         HeatMap(heat_data).add_to(m)
 
-###############################################################################
-# Render the map and process clicks
-###############################################################################
 clicked_data = st_folium(m, use_container_width=True, height=600)
 
+# Sidebar details after click
 with summary_container:
     if clicked_data and clicked_data.get("last_clicked"):
         lat = clicked_data["last_clicked"]["lat"]
         lon = clicked_data["last_clicked"]["lng"]
 
         if st.session_state["mode"] == "State Details":
-            # Find clicked state
+            # Identify which state was clicked
             clickedState = find_state(lat, lon)
             st.session_state["clicked_state"] = str(clickedState)
 
@@ -331,7 +321,6 @@ with summary_container:
             if state_data.empty:
                 st.warning(f"No data available for state: {wantedState}")
             else:
-                # Summaries
                 total_incidents = state_data.shape[0]
                 st.write(f"**Total incidents in {wantedState}:** {total_incidents}")
 
@@ -361,13 +350,31 @@ with summary_container:
                 st.write(incident_breakdown)
 
         else:
-            # Incident Mode: Show that incident detail or do nothing here
-            pass
+            # Incident mode
+            st.session_state["selected_incident"] = (lat, lon)
+            incident = filtered_data[
+                (filtered_data["latitude"] == lat) & (filtered_data["longitud"] == lon)
+            ]
+            if not incident.empty:
+                row = incident.iloc[0]
+                st.write("### Incident Details")
+                st.write(f"**Accident Type:** {row['Accident_Type']}")
+                st.write(f"**Injuries:** {row['casinj']}")
+                st.write(f"**Deaths:** {row['caskld']}")
+                st.write(f"**Description:** {row['description']}")
+                st.write(f"**State:** {row['state_name']}")
+                st.write(f"**Train Speed:** {row['trnspd']} mph")
+                st.write(f"**Equipment Damage:** ${row['eqpdmg']}")
+                st.write(f"**Track Damage:** ${row['trkdmg']}")
+                st.write(f"**Weather Condition:** {row['Weather_Condition']}")
+            else:
+                st.warning("No incident data found for that location.")
 
     elif clicked_data and clicked_data.get("last_object_clicked") and st.session_state["mode"] == "Incident Details":
         lat = clicked_data["last_object_clicked"]["lat"]
         lon = clicked_data["last_object_clicked"]["lng"]
-        # Find the matching incident
+        st.session_state["selected_incident"] = (lat, lon)
+
         incident = filtered_data[
             (filtered_data["latitude"] == lat) & (filtered_data["longitud"] == lon)
         ]
@@ -383,15 +390,12 @@ with summary_container:
             st.write(f"**Equipment Damage:** ${row['eqpdmg']}")
             st.write(f"**Track Damage:** ${row['trkdmg']}")
             st.write(f"**Weather Condition:** {row['Weather_Condition']}")
-            st.session_state["selected_incident"] = (lat, lon)
         else:
             st.warning("No incident data found for that location.")
 
-################################################################################
 # Visualization Modes
-################################################################################
 
-# 1) Multi-Scatter
+# 1) Multi-Scatter Plots
 if visualization_mode == "Multi-Scatter Plots":
     st.markdown("## Multi-Scatter Plots: Damage, Fatalities, Injuries vs. Speed")
 
@@ -522,6 +526,62 @@ if visualization_mode == "Multi-Scatter Plots":
 
                 used_categories.add(cat_val)
 
+            # Highlight the selected incident if any
+            if st.session_state["selected_incident"] is not None:
+                hilat, hilon = st.session_state["selected_incident"]
+                # find that row in chart_data
+                row_match = chart_data[
+                    (chart_data["latitude"] == hilat) & (chart_data["longitud"] == hilon)
+                ]
+                if not row_match.empty:
+                    # We'll highlight it in all 4 subplots with star markers
+                    r = row_match.iloc[0]
+                    highlight_x_eqp = r["trnspd"]
+                    highlight_y_eqp = r["eqpdmg"]
+                    highlight_x_trk = r["trnspd"]
+                    highlight_y_trk = r["trkdmg"]
+                    highlight_x_fat = r["trnspd"]
+                    highlight_y_fat = r["caskld"]
+                    highlight_x_inj = r["trnspd"]
+                    highlight_y_inj = r["casinj"]
+
+                    # Add four single-point highlight traces
+                    fig.add_trace(go.Scatter(
+                        x=[highlight_x_eqp],
+                        y=[highlight_y_eqp],
+                        mode="markers",
+                        marker=dict(size=15, symbol="star", color="yellow"),
+                        name="Selected Incident",
+                        showlegend=False
+                    ), row=1, col=1)
+
+                    fig.add_trace(go.Scatter(
+                        x=[highlight_x_trk],
+                        y=[highlight_y_trk],
+                        mode="markers",
+                        marker=dict(size=15, symbol="star", color="yellow"),
+                        name="Selected Incident",
+                        showlegend=False
+                    ), row=1, col=2)
+
+                    fig.add_trace(go.Scatter(
+                        x=[highlight_x_fat],
+                        y=[highlight_y_fat],
+                        mode="markers",
+                        marker=dict(size=15, symbol="star", color="yellow"),
+                        name="Selected Incident",
+                        showlegend=False
+                    ), row=2, col=1)
+
+                    fig.add_trace(go.Scatter(
+                        x=[highlight_x_inj],
+                        y=[highlight_y_inj],
+                        mode="markers",
+                        marker=dict(size=15, symbol="star", color="yellow"),
+                        name="Selected Incident",
+                        showlegend=False
+                    ), row=2, col=2)
+
             # Update axes titles
             fig.update_xaxes(title_text="Train Speed (mph)", row=1, col=1)
             fig.update_yaxes(title_text="Equipment Damage ($)", row=1, col=1)
@@ -532,7 +592,6 @@ if visualization_mode == "Multi-Scatter Plots":
             fig.update_xaxes(title_text="Train Speed (mph)", row=2, col=2)
             fig.update_yaxes(title_text="Injuries", row=2, col=2)
 
-            # Layout
             fig.update_layout(
                 title_text=f"Damage, Fatalities & Injuries vs. Speed{scatter_title_suffix}",
                 plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
@@ -551,7 +610,7 @@ if visualization_mode == "Multi-Scatter Plots":
 
             st.markdown("**Click any point to zoom the map to that incident.**")
 
-            # Use plotly_events to capture clicks
+            # plotly_events to capture scatter clicks
             selected_points = plotly_events(
                 fig,
                 click_event=True,
@@ -561,7 +620,7 @@ if visualization_mode == "Multi-Scatter Plots":
                 override_width="100%"
             )
 
-            # If the user clicked a point, we center the map
+            # If the user clicked a point on the scatter, center the map there
             if selected_points:
                 point_index = selected_points[0]["pointIndex"]
                 trace_index = selected_points[0]["curveNumber"]
@@ -580,17 +639,16 @@ if visualization_mode == "Multi-Scatter Plots":
 
 # 2) Radar Plot
 elif visualization_mode == "Radar Plot":
-    ######################################################################
-    # Radar Plot Implementation with a Comparison State in "State Details"
-    ######################################################################
-    st.markdown("### Interactive Radar Plot (Balanced + Comparison)")
+    st.markdown("## Radar Plot")
 
+    # 2A. State-based radar (comparison) if in State Mode
     if st.session_state["mode"] == "State Details":
+        st.markdown("#### State Radar Plot (Comparison)")
         if st.session_state["clicked_state"]:
             base_state = st.session_state["clicked_state"]
             base_data = filtered_data[filtered_data['state_name'] == base_state]
 
-            # Provide a dropdown to pick a comparison state
+            #dropdown to pick a comparison state
             all_states = sorted(filtered_data['state_name'].dropna().unique())
             comparison_state = st.sidebar.selectbox(
                 "Compare with another State",
@@ -600,8 +658,8 @@ elif visualization_mode == "Radar Plot":
 
             import numpy as np
 
-            def compute_radar_values(state_df):
-                """Compute normalized (0-1) radar values for the given state data using log+min–max transform."""
+            def compute_radar_values_state(state_df):
+                """Compute normalized (0-1) radar values for the given state's distribution using log+min–max transform."""
                 if state_df.empty:
                     return None
 
@@ -620,6 +678,7 @@ elif visualization_mode == "Radar Plot":
                         normalized_values[col] = 0.0
                         continue
 
+                    # SHIFT + LOG + MIN–MAX
                     min_val_raw = col_data.min()
                     shift_amount = 1 - min_val_raw if min_val_raw < 1 else 0
                     col_data_shifted = col_data + shift_amount
@@ -632,6 +691,7 @@ elif visualization_mode == "Radar Plot":
                     else:
                         col_data_norm = (col_data_log - col_log_min) / (col_log_max - col_log_min)
 
+                    # final single value = mean
                     if isinstance(col_data_norm, float):
                         col_norm_mean = col_data_norm
                     else:
@@ -641,7 +701,7 @@ elif visualization_mode == "Radar Plot":
 
                 return normalized_values
 
-            base_radar_dict = compute_radar_values(base_data)
+            base_radar_dict = compute_radar_values_state(base_data)
 
             if not base_radar_dict:
                 st.warning(f"No data available for {base_state} to plot the Radar Chart.")
@@ -672,7 +732,7 @@ elif visualization_mode == "Radar Plot":
                 # If user chose a comparison state
                 if comparison_state != "None":
                     comp_data = filtered_data[filtered_data['state_name'] == comparison_state]
-                    comp_radar_dict = compute_radar_values(comp_data)
+                    comp_radar_dict = compute_radar_values_state(comp_data)
                     if comp_radar_dict:
                         comp_radar_values = [comp_radar_dict[a] for a in attrs_order]
                         fig.add_trace(go.Scatterpolar(
@@ -739,70 +799,168 @@ elif visualization_mode == "Radar Plot":
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("Click on a state marker in the map to see its Radar Plot.")
-    else:
-        st.warning("Radar Plot is most relevant in State Details mode. Switch to 'State Details' and select a state on the map.")
 
-# 3) Line Chart
-elif visualization_mode == "Line Chart":
-    st.markdown("### Line Chart: Incident Trends by Year")
+    # 2B. Incident-based radar if in Incident Mode & an incident is selected
+    if st.session_state["mode"] == "Incident Details":
+        st.markdown("#### Incident Radar Plot (Single Incident)")
+        if st.session_state["selected_incident"] is not None:
+            lat_inc, lon_inc = st.session_state["selected_incident"]
+            inc_row = filtered_data[
+                (filtered_data["latitude"] == lat_inc) & (filtered_data["longitud"] == lon_inc)
+            ]
+            if not inc_row.empty:
+                # We'll do a single-incident radar.
+                # We'll scale by min-max across the entire filtered_data, so the user sees how big or small
+                # this incident is relative to the entire dataset.
+                rowvals = inc_row.iloc[0]
 
-    # Let user select how to categorize lines: "Total Incidents" or "By Weather Condition"
-    line_category = st.radio("Line Chart Category", ["Total Incidents", "By Weather Condition"])
+                # We define the same 5 attributes
+                attributes = ["trnspd", "eqpdmg", "trkdmg", "caskld", "casinj"]
+                display_labels = [
+                    "Train Speed",
+                    "Equip Damage",
+                    "Track Damage",
+                    "Deaths",
+                    "Injuries"
+                ]
 
-    # We only have year in 'filtered_data["year"]'
-    line_data = filtered_data.dropna(subset=["year"])
-    if line_data.empty:
-        st.warning("No data available for the selected filters or no year data.")
-    else:
-        # Convert year to int if needed
-        line_data["year"] = line_data["year"].astype(int)
+                # Compute min & max from entire filtered_data
+                mins = {}
+                maxs = {}
+                for col in attributes:
+                    col_data = filtered_data[col].dropna()
+                    if col_data.empty:
+                        mins[col] = 0
+                        maxs[col] = 1
+                    else:
+                        mins[col] = col_data.min()
+                        maxs[col] = col_data.max()
 
-        if line_category == "Total Incidents":
-            # Group by year => count incidents
-            year_counts = line_data.groupby("year").size().reset_index(name="count")
-            fig = px.line(
-                year_counts,
-                x="year",
-                y="count",
-                title="Total Incidents by Year",
-                markers=True
-            )
-            fig.update_traces(line_color="cyan")
+                # Now build normalized [0..1] value for this single incident
+                incident_radar_vals = []
+                for col in attributes:
+                    val = rowvals[col] if not pd.isnull(rowvals[col]) else 0.0
+                    rng = maxs[col] - mins[col]
+                    if rng == 0:
+                        norm_val = 0.0
+                    else:
+                        norm_val = (val - mins[col]) / rng
+                    incident_radar_vals.append(norm_val)
+
+                # Plot a single polar
+                fig_incident = go.Figure(data=go.Scatterpolar(
+                    r=incident_radar_vals,
+                    theta=display_labels,
+                    fill='toself',
+                    fillcolor='rgba(200, 50, 255, 0.3)',
+                    line_color='rgba(200, 50, 255, 1)',
+                    marker=dict(symbol='circle', size=6, color='rgba(200, 50, 255, 1)'),
+                    name="This Incident"
+                ))
+
+                fig_incident.update_layout(
+                    polar=dict(
+                        bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                        radialaxis=dict(
+                            visible=True,
+                            range=[0,1],
+                            showline=True,
+                            linewidth=2,
+                            linecolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            showgrid=True,
+                            gridcolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            gridwidth=1,
+                            tickfont=dict(color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'),
+                        ),
+                        angularaxis=dict(
+                            visible=True,
+                            showline=True,
+                            linewidth=1,
+                            linecolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            showgrid=True,
+                            gridcolor='rgba(255,255,255,0.2)' if st.session_state["theme"] == "dark" else 'rgba(0,0,0,0.1)',
+                            tickfont=dict(color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'),
+                            rotation=90,
+                        ),
+                    ),
+                    paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                    plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                    font=dict(color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'),
+                    showlegend=False,
+                    margin=dict(l=60, r=60, t=60, b=60),
+                    title=f"Radar for Incident @ (lat={lat_inc:.3f}, lon={lon_inc:.3f})"
+                )
+
+                st.plotly_chart(fig_incident, use_container_width=True)
+            else:
+                st.warning("No data found for the selected incident to build a radar chart.")
         else:
-            # By Weather Condition => group by year & weather => multiple lines
-            # If weather is missing, fill with "Unknown" to avoid confusion
-            line_data["Weather_Condition"] = line_data["Weather_Condition"].fillna("Unknown")
-            group_cols = ["year", "Weather_Condition"]
-            grouped = line_data.groupby(group_cols).size().reset_index(name="count")
-            fig = px.line(
-                grouped,
-                x="year",
-                y="count",
-                color="Weather_Condition",
-                title="Incidents by Year & Weather Condition",
-                markers=True
-            )
+            st.warning("Click an incident on the map to see its radar plot.")
 
-        # Style
-        fig.update_layout(
-            plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
-            paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
-            font_color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'
+# 3) Line Chart (Not working yet)
+elif visualization_mode == "Line Chart":
+    st.markdown("### Line Chart: Incidents Over Time (Year-Month)")
+
+    # We'll group by year-month from the columns "year" and "month"
+    line_data = filtered_data.dropna(subset=["year", "month"])
+    if line_data.empty:
+        st.warning("No data available for the selected filters or missing year/month.")
+    else:
+        # Build a date column from year-month (arbitrary day=1)
+        line_data["date"] = pd.to_datetime(
+            line_data.apply(lambda r: f"{int(r.year)}-{int(r.month)}-01", axis=1),
+            format="%Y-%m-%d",
+            errors="coerce"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        line_data = line_data.dropna(subset=["date"])
+        if line_data.empty:
+            st.warning("No valid date could be formed from year/month.")
+        else:
+            # Let user pick if we want "Total Incidents" or "By Weather Condition"
+            line_category = st.radio("Line Category", ["Total Incidents", "By Weather Condition"], index=0)
+
+            if line_category == "Total Incidents":
+                # Group by date => count
+                grouped = line_data.groupby("date").size().reset_index(name="count")
+                fig = px.line(
+                    grouped,
+                    x="date",
+                    y="count",
+                    title="Total Incidents by Year-Month",
+                    markers=True
+                )
+                fig.update_traces(line_color="cyan")
+            else:
+                # By Weather => group by date+weather => multiple lines
+                line_data["Weather_Condition"] = line_data["Weather_Condition"].fillna("Unknown")
+                grouped = line_data.groupby(["date", "Weather_Condition"]).size().reset_index(name="count")
+                fig = px.line(
+                    grouped,
+                    x="date",
+                    y="count",
+                    color="Weather_Condition",
+                    title="Incidents by Year-Month & Weather Condition",
+                    markers=True
+                )
+
+            fig.update_layout(
+                plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
+                font_color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
 
 # 4) Bar Chart
 elif visualization_mode == "Bar Chart":
     st.markdown("### Bar Chart: Incidents by State")
 
-    # We can do something as simple as grouping by state_name and counting
+    # Group by state => count
     bar_data = filtered_data.dropna(subset=["state_name"])
     if bar_data.empty:
         st.warning("No data available for the selected filters or no valid state data.")
     else:
-        # Group by state => count
         state_counts = bar_data.groupby("state_name").size().reset_index(name="count")
-        # Sort descending
         state_counts = state_counts.sort_values("count", ascending=False)
 
         fig = px.bar(
@@ -811,7 +969,6 @@ elif visualization_mode == "Bar Chart":
             y="count",
             title="Incidents by State",
         )
-        # Style
         fig.update_layout(
             xaxis_title="State",
             yaxis_title="Incident Count",
@@ -832,42 +989,37 @@ with st.expander("ℹ️ Help: How to Use the Railroad Incident Map"):
     **Select Mode**  
     - **Incident Details**: Markers represent individual incidents.  
       - Click a marker on the map to see details about that incident.  
+      - You also get an **Incident Radar Plot** in "Radar Plot" visualization.  
     - **State Details**: Markers represent states.  
       - Click a state marker to see aggregate stats.  
+      - You get a **State Radar Plot** in "Radar Plot" visualization, with optional comparison.  
 
     **Visualization Mode**  
     - **Multi-Scatter Plots**:  
-      - Displays a 2x2 grid: 
-        1) Equipment Damage vs Speed  
-        2) Track Damage vs Speed  
-        3) Fatalities vs Speed  
-        4) Injuries vs Speed  
-      - Click a point to "zoom" the Folium map and (if you’re in State Mode) automatically switch to Incident Mode.  
-
-    - **Radar Plot** (State Details mode):  
-      - Click a state marker, then choose "Radar Plot".  
-      - Compare that state's stats with another state by selecting from the dropdown in the sidebar.  
-
+      - 2x2 grid of damage, fatalities, injuries vs. train speed.  
+      - Clicking a point will recenter the map on that incident.  
+      - If in State Mode, you'll automatically switch to Incident Mode.  
+    - **Radar Plot**:  
+      - In **State Mode**: Compare two states.  
+      - In **Incident Mode**: See a single incident’s metrics vs. min–max of all filtered incidents.  
     - **Line Chart**:  
-      - Shows incidents over time (by `Year_Group`).  
-      - "Total Incidents" for a single line, or "By Weather Condition" for multiple lines.  
-
+      - Uses `incident_year` and `incident_month` to show incident counts over time.  
+      - Choose "Total Incidents" or "By Weather Condition" lines.  
     - **Bar Chart**:  
-      - Shows incidents by state in descending order.  
+      - Shows incident counts by state.  
 
     **Dynamic Filters**  
-    - Refine results by Speed Category, Weather, Year, Death, Injury, Damage categories.  
+    - Speed Category, Weather, Year, Death, Injury, Damage, etc.  
 
     **Clustering & Heatmap**  
-    - Check these boxes for marker clustering or a heatmap overlay.
+    - Check these boxes for clustering or a heatmap overlay.
 
     **Theme Toggle**  
-    - Switch between dark and light themes for better visual comfort.
+    - Toggle between dark and light themes.
 
     **Clearing Incidents**  
-    - The "Clear Incident Filter" button resets the selected incident.
+    - The "Clear Incident Filter" button in the Multi-Scatter Plot resets any selected incident.
     """)
-
 
 # Instructions to run the app
 # streamlit run "C:\Users\yongj\OneDrive\Desktop\Visualization Project\dynamic_filters_map.py"
