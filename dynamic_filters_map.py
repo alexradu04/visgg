@@ -10,6 +10,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 from streamlit_plotly_events import plotly_events
+import geopandas as gpd
 
 st.set_page_config(layout="wide", page_title="Dynamic Railroad Incident Map")
 
@@ -53,8 +54,70 @@ map_tiles = {
 }.get(st.session_state["theme"], "CartoDB dark_matter")
 
 # Path to your SQLite DB
-sqlite_db = r"C:\\Users\\yongj\\OneDrive\\Desktop\\Visualization Project\\railroad_incidents_cleanedMUT.db"
+sqlite_db = r"C:\\dev\\visgg\\data\\railroad_incidents_cleanedMUT.db"
+state_borders_df = gpd.read_file("C:\\dev\\visgg\\data\\us-states.json")
+state_borders_df = state_borders_df.to_crs(epsg=4326)
 
+def update_overlay(should_update):
+    if should_update:
+        for _, r in state_borders_df.iterrows():
+            # Without simplifying the representation of each borough,
+            # the map might not be displayed
+            sim_geo = gpd.GeoSeries(r["geometry"]).simplify(tolerance=0.001)
+            geo_j = sim_geo.to_json()
+            geo_j = folium.GeoJson(data=geo_j, style_function=lambda x: {"fillColor": "orange"})
+            # folium.Popup(r["BoroName"]).add_to(geo_j)
+            geo_j.add_to(m)
+        
+actual_name = {
+    # Speed Categories
+    "Very Slow (Speed ≤ 20)": "Very Slow",
+    "Slow (Speed between 21 and 40)": "Slow",
+    "Moderate (Speed between 41 and 60)": "Moderate",
+    "Fast (Speed between 61 and 80)": "Fast",
+    "High Speed (Speed > 80)": "High Speed",
+
+    # Year Categories
+    "Before 1990 (Year < 1990)": "Before 1990",
+    "1990-1999 (Year between 1990 and 1999)": "1990-1999",
+    "2000-2009 (Year between 2000 and 2009)": "2000-2009",
+    "2010-2019 (Year between 2010 and 2019)": "2010-2019",
+    "2020 and Later (Year >= 2020)": "2020 and Later",
+
+    # Weather Conditions
+    "Clear (1)": "Clear",
+    "Cloudy (2)": "Cloudy",
+    "Rain (3)": "Rain",
+    "Fog (4)": "Fog",
+    "Snow (5)": "Snow",
+
+    # Equipment Damage Categories
+    "Minimal (Damage ≤ $10,000)": "Minimal",
+    "Moderate (Damage between $10,001 and $100,000)": "Moderate",
+    "Significant (Damage between $100,001 and $1,000,000)": "Significant",
+    "Severe (Damage > $1,000,000)": "Severe",
+
+    # Track Damage Categories
+    "Minimal (Damage ≤ $10,000)": "Minimal",
+    "Moderate (Damage between $10,001 and $100,000)": "Moderate",
+    "Significant (Damage between $100,001 and $1,000,000)": "Significant",
+    "Severe (Damage > $1,000,000)": "Severe",
+
+    # Death Categories
+    "No Deaths (0 deaths)": "No Deaths",
+    "Isolated (1 death)": "Isolated",
+    "Moderate Fatalities (2-10 deaths)": "Moderate Fatalities",
+    "High Fatalities (11-50 deaths)": "High Fatalities",
+    "Catastrophic (> 50 deaths)": "Catastrophic",
+
+    # Injury Categories
+    "No Injuries (0 injuries)": "No Injuries",
+    "Low Severity (1-10 injuries)": "Low Severity",
+    "Moderate Severity (11-50 injuries)": "Moderate Severity",
+    "High Severity (51-100 injuries)": "High Severity",
+    "Catastrophic (> 100 injuries)": "Catastrophic"
+}
+@st.cache_data
 def get_filter_options(table_name, column_name):
     conn = sqlite3.connect(sqlite_db)
     query = f"SELECT DISTINCT {column_name} FROM {table_name};"
@@ -63,12 +126,73 @@ def get_filter_options(table_name, column_name):
     return options
 
 # Now we also fetch possible year group values from `Year_Groups` table
-speed_categories = get_filter_options("Train_Speed_Categories", "Speed_Category")
-weather_conditions = get_filter_options("Weather_Conditions", "Weather_Condition")
-death_categories = get_filter_options("Death_Categories", "Death_Category")
-injury_categories = get_filter_options("Injury_Categories", "Injury_Category")
-damage_categories = get_filter_options("Equipment_Damage_Categories", "Damage_Category")
-year_group_categories = get_filter_options("Year_Groups", "Year_Group")  # <-- new
+# speed_categories = get_filter_options("Train_Speed_Categories", "Speed_Category")
+# weather_conditions = get_filter_options("Weather_Conditions", "Weather_Condition")
+# death_categories = get_filter_options("Death_Categories", "Death_Category")
+# injury_categories = get_filter_options("Injury_Categories", "Injury_Category")
+# damage_categories = get_filter_options("Equipment_Damage_Categories", "Damage_Category")
+# year_group_categories = get_filter_options("Year_Groups", "Year_Group")  # <-- new
+
+speed_categories = [
+    "Very Slow (Speed ≤ 20)",
+    "Slow (Speed between 21 and 40)",
+    "Moderate (Speed between 41 and 60)",
+    "Fast (Speed between 61 and 80)",
+    "High Speed (Speed > 80)"
+]
+
+# Year Categories
+year_group_categories = [
+    "Before 1990 (Year < 1990)",
+    "1990-1999 (Year between 1990 and 1999)",
+    "2000-2009 (Year between 2000 and 2009)",
+    "2010-2019 (Year between 2010 and 2019)",
+    "2020 and Later (Year >= 2020)"
+]
+
+# Weather Conditions
+weather_conditions = [
+    "Clear (1)",
+    "Cloudy (2)",
+    "Rain (3)",
+    "Fog (4)",
+    "Snow (5)"
+]
+
+# Equipment Damage Categories
+damage_categories = [
+    "Minimal (Damage ≤ $10,000)",
+    "Moderate (Damage between $10,001 and $100,000)",
+    "Significant (Damage between $100,001 and $1,000,000)",
+    "Severe (Damage > $1,000,000)"
+]
+
+# Track Damage Categories
+track_damage_categories = [
+    "Minimal (Damage ≤ $10,000)",
+    "Moderate (Damage between $10,001 and $100,000)",
+    "Significant (Damage between $100,001 and $1,000,000)",
+    "Severe (Damage > $1,000,000)"
+]
+
+# Death Categories
+death_categories = [
+    "No Deaths (0 deaths)",
+    "Isolated (1 death)",
+    "Moderate Fatalities (2-10 deaths)",
+    "High Fatalities (11-50 deaths)",
+    "Catastrophic (> 50 deaths)"
+]
+
+# Injury Categories
+injury_categories = [
+    "No Injuries (0 injuries)",
+    "Low Severity (1-10 injuries)",
+    "Moderate Severity (11-50 injuries)",
+    "High Severity (51-100 injuries)",
+    "Catastrophic (> 100 injuries)"
+]
+
 
 # Sidebar: Visualization Mode
 st.sidebar.title("Visualization Mode")
@@ -113,7 +237,7 @@ with col2:
     selected_damage = st.selectbox("Damage Category", ["All"] + damage_categories)
 
 enable_clustering = st.sidebar.checkbox("Enable Clustering", value=True)
-show_heatmap = st.sidebar.checkbox("Show Heatmap")
+# show_heatmap = st.sidebar.checkbox("Show Heatmap")
 
 query = """
 SELECT 
@@ -145,18 +269,19 @@ WHERE 1=1
 """
 
 if selected_speed != "All":
-    query += f" AND S.Speed_Category = '{selected_speed}'"
+    query += f" AND S.Speed_Category = '{actual_name[selected_speed]}'"
 if selected_weather != "All":
-    query += f" AND W.Weather_Condition = '{selected_weather}'"
+    query += f" AND W.Weather_Condition = '{actual_name[selected_weather]}'"
+
 if selected_death != "All":
-    query += f" AND D.Death_Category = '{selected_death}'"
+    query += f" AND D.Death_Category = '{actual_name[selected_death]}'"
 if selected_injury != "All":
-    query += f" AND I.Injury_Category = '{selected_injury}'"
+    query += f" AND I.Injury_Category = '{actual_name[selected_injury]}'"
 if selected_damage != "All":
-    query += f" AND E.Damage_Category = '{selected_damage}'"
+    query += f" AND E.Damage_Category = '{actual_name[selected_damage]}'"
 
 if selected_year_group != "All":
-    query += f" AND YG.Year_Group = '{selected_year_group}'"
+    query += f" AND YG.Year_Group = '{actual_name[selected_year_group]}'"
 
 query += " LIMIT 500;"
 
@@ -218,6 +343,7 @@ def build_map_center():
 
 map_center, map_zoom = build_map_center()
 m = folium.Map(location=map_center, zoom_start=map_zoom, tiles=map_tiles)
+update_overlay(st.session_state["mode"] == "State Details")
 
 if st.session_state["mode"] == "State Details" and st.session_state["clicked_state"]:
     title_html = f"""
@@ -271,10 +397,10 @@ else:
             tooltip="Click for details"
         ).add_to(marker_cluster)
 
-if show_heatmap:
-    heat_data = filtered_data[["latitude", "longitud"]].dropna().values.tolist()
-    if heat_data:
-        HeatMap(heat_data).add_to(m)
+# if show_heatmap:
+#     heat_data = filtered_data[["latitude", "longitud"]].dropna().values.tolist()
+#     if heat_data:
+#         HeatMap(heat_data).add_to(m)
 
 clicked_data = st_folium(m, use_container_width=True, height=600)
 
@@ -400,7 +526,9 @@ if visualization_mode == "Multi-Scatter Plots":
                 subdf = chart_data[chart_data[map_color_dimension] == cat_val]
                 cat_color = color_map.get(cat_val, "#808080")
 
-                #Equipment vs Speed
+                show_legend = cat_val not in used_categories
+
+                # Equipment vs Speed
                 eqp_trace = go.Scatter(
                     x=subdf["trnspd"],
                     y=subdf["eqpdmg"],
@@ -418,11 +546,11 @@ if visualization_mode == "Multi-Scatter Plots":
                     meta=list(zip(subdf["latitude"], subdf["longitud"])),
                     name=str(cat_val),
                     legendgroup=str(cat_val),
-                    showlegend=(cat_val not in used_categories)
+                    showlegend=False
                 )
                 fig.add_trace(eqp_trace, row=1, col=1)
 
-                #Track vs Speed
+                # Track vs Speed
                 trk_trace = go.Scatter(
                     x=subdf["trnspd"],
                     y=subdf["trkdmg"],
@@ -440,11 +568,11 @@ if visualization_mode == "Multi-Scatter Plots":
                     meta=list(zip(subdf["latitude"], subdf["longitud"])),
                     name=str(cat_val),
                     legendgroup=str(cat_val),
-                    showlegend=(cat_val not in used_categories)
+                    showlegend=False
                 )
                 fig.add_trace(trk_trace, row=1, col=2)
 
-                #Fatalities vs Speed
+                # Fatalities vs Speed
                 fat_trace = go.Scatter(
                     x=subdf["trnspd"],
                     y=subdf["caskld"],
@@ -462,7 +590,7 @@ if visualization_mode == "Multi-Scatter Plots":
                     meta=list(zip(subdf["latitude"], subdf["longitud"])),
                     name=str(cat_val),
                     legendgroup=str(cat_val),
-                    showlegend=(cat_val not in used_categories)
+                    showlegend=False
                 )
                 fig.add_trace(fat_trace, row=2, col=1)
 
@@ -484,10 +612,11 @@ if visualization_mode == "Multi-Scatter Plots":
                     meta=list(zip(subdf["latitude"], subdf["longitud"])),
                     name=str(cat_val),
                     legendgroup=str(cat_val),
-                    showlegend=(cat_val not in used_categories)
+                    showlegend=show_legend
                 )
                 fig.add_trace(inj_trace, row=2, col=2)
 
+                # Update used categories after adding all traces for this category
                 used_categories.add(cat_val)
 
             #Highlight selected incident if any

@@ -1,5 +1,7 @@
 import json
-
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import folium
 file = open("C:\\dev\\visgg\\data\\us-states.json")
 data = json.load(file)
 # print(data['features'])
