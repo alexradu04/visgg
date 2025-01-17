@@ -104,17 +104,16 @@ actual_name = {
     "Severe (Damage > $1,000,000)": "Severe",
 
     # Death Categories
-    "No Deaths (0 deaths)": "No Deaths",
+    "No Deaths (0 deaths)": "No deaths",
     "Isolated (1 death)": "Isolated",
-    "Moderate Fatalities (2-10 deaths)": "Moderate Fatalities",
-    "High Fatalities (11-50 deaths)": "High Fatalities",
-    "Catastrophic (> 50 deaths)": "Catastrophic",
+    "Moderate Fatalities (2-10 deaths)": "Moderate fatalities",
+    "High Fatalities (>10 deaths)": "High fatalities",
 
     # Injury Categories
-    "No Injuries (0 injuries)": "No Injuries",
-    "Low Severity (1-10 injuries)": "Low Severity",
-    "Moderate Severity (11-50 injuries)": "Moderate Severity",
-    "High Severity (51-100 injuries)": "High Severity",
+    "No Injuries (0 injuries)": "No injuries",
+    "Low Severity (1-10 injuries)": "Low severity",
+    "Moderate Severity (11-50 injuries)": "Moderate severity",
+    "High Severity (51-100 injuries)": "High severity",
     "Catastrophic (> 100 injuries)": "Catastrophic"
 }
 @st.cache_data
@@ -131,7 +130,12 @@ def get_filter_options(table_name, column_name):
 # death_categories = get_filter_options("Death_Categories", "Death_Category")
 # injury_categories = get_filter_options("Injury_Categories", "Injury_Category")
 # damage_categories = get_filter_options("Equipment_Damage_Categories", "Damage_Category")
-# year_group_categories = get_filter_options("Year_Groups", "Year_Group")  # <-- new
+year_group_categories = get_filter_options("Year_Groups", "Year_Group")  # <-- new
+
+for category in year_group_categories:
+    actual_name[category] = category
+
+print("Speed Categories:", get_filter_options("Death_Categories", "Death_Category"))
 
 speed_categories = [
     "Very Slow (Speed ≤ 20)",
@@ -180,8 +184,7 @@ death_categories = [
     "No Deaths (0 deaths)",
     "Isolated (1 death)",
     "Moderate Fatalities (2-10 deaths)",
-    "High Fatalities (11-50 deaths)",
-    "Catastrophic (> 50 deaths)"
+    "High Fatalities (>10 deaths)"
 ]
 
 # Injury Categories
