@@ -134,8 +134,9 @@ year_group_categories = get_filter_options("Year_Groups", "Year_Group")  # <-- n
 
 for category in year_group_categories:
     actual_name[category] = category
+    # print(actual_name[category])
 
-print("Speed Categories:", get_filter_options("Death_Categories", "Death_Category"))
+# print("Speed Categories:", get_filter_options("Death_Categories", "Death_Category"))
 
 speed_categories = [
     "Very Slow (Speed ≤ 20)",
@@ -146,13 +147,13 @@ speed_categories = [
 ]
 
 # Year Categories
-year_group_categories = [
-    "Before 1990 (Year < 1990)",
-    "1990-1999 (Year between 1990 and 1999)",
-    "2000-2009 (Year between 2000 and 2009)",
-    "2010-2019 (Year between 2010 and 2019)",
-    "2020 and Later (Year >= 2020)"
-]
+# year_group_categories = [
+#     "Before 1990 (Year < 1990)",
+#     "1990-1999 (Year between 1990 and 1999)",
+#     "2000-2009 (Year between 2000 and 2009)",
+#     "2010-2019 (Year between 2010 and 2019)",
+#     "2020 and Later (Year >= 2020)"
+# ]
 
 # Weather Conditions
 weather_conditions = [
@@ -284,7 +285,7 @@ if selected_damage != "All":
     query += f" AND E.Damage_Category = '{actual_name[selected_damage]}'"
 
 if selected_year_group != "All":
-    query += f" AND YG.Year_Group = '{actual_name[selected_year_group]}'"
+    query += f" AND YG.Year_Group = '{selected_year_group}'"
 
 query += " LIMIT 500;"
 
