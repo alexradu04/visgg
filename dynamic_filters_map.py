@@ -53,7 +53,7 @@ map_tiles = {
     "states": "CartoDB positron"
 }.get(st.session_state["theme"], "CartoDB dark_matter")
 
-# Path to your SQLite DB
+#Path to your SQLite DB
 sqlite_db = r"C:\\dev\\visgg\\data\\railroad_incidents_cleanedMUT.db"
 state_borders_df = gpd.read_file("C:\\dev\\visgg\\data\\us-states.json")
 state_borders_df = state_borders_df.to_crs(epsg=4326)
@@ -124,7 +124,7 @@ def get_filter_options(table_name, column_name):
     conn.close()
     return options
 
-# Now we also fetch possible year group values from `Year_Groups` table
+# Now we also fetch possible year group values from Year_Groups table
 # speed_categories = get_filter_options("Train_Speed_Categories", "Speed_Category")
 # weather_conditions = get_filter_options("Weather_Conditions", "Weather_Condition")
 # death_categories = get_filter_options("Death_Categories", "Death_Category")
@@ -401,6 +401,8 @@ else:
             tooltip="Click for details"
         ).add_to(marker_cluster)
 
+#Removed Heatmap
+
 # if show_heatmap:
 #     heat_data = filtered_data[["latitude", "longitud"]].dropna().values.tolist()
 #     if heat_data:
@@ -488,248 +490,298 @@ with summary_container:
             st.warning("No incident data found for that location.")
 
 #Visualization Modes
-#1) Multi-Scatter Plots
+#Multi-Scatter Plot Dynamic 1
 if visualization_mode == "Multi-Scatter Plots":
-    st.markdown("## Multi-Scatter Plots: Damage, Fatalities, Injuries vs. Speed")
+    st.markdown("## Multi-Scatter Plots: Choose Visualization Type")
 
-    #If in State mode and a state is selected, limit data to that state
-    if st.session_state["mode"] == "State Details" and st.session_state["clicked_state"]:
-        scatter_title_suffix = f" in {st.session_state['clicked_state']}"
-        chart_data = filtered_data[filtered_data['state_name'] == st.session_state["clicked_state"]]
-    else:
-        scatter_title_suffix = ""
-        chart_data = filtered_data.copy()
+    # Dropdown to select visualization subtype
+    vis_subtype = st.selectbox(
+        "Select Visualization Type:", 
+        ["Standard Multi-Scatter", "Scatter Plot Matrix"]
+    )
 
-    if chart_data.empty:
-        st.warning("No data available for the selected filters.")
-    else:
-        needed_cols = ["trnspd", "eqpdmg", "trkdmg", "caskld", "casinj",
-                       "latitude", "longitud", map_color_dimension, "description"]
-        chart_data = chart_data.dropna(subset=needed_cols)
-        if chart_data.empty:
-            st.warning("No data to plot on the scatter charts with the current selections.")
+    # Option for Scatter Plot Matrix
+    if vis_subtype == "Scatter Plot Matrix":
+        st.markdown("## Scatter Plot Matrix")
+        
+        # If in State mode and a state is selected, limit data to that state
+        if st.session_state.get("mode") == "State Details" and st.session_state.get("clicked_state"):
+            matrix_title_suffix = f" in {st.session_state['clicked_state']}"
+            matrix_data = filtered_data[
+                filtered_data['state_name'] == st.session_state["clicked_state"]
+            ]
         else:
-            #Build 2x2 subplots
-            fig = make_subplots(
-                rows=2, cols=2, 
-                subplot_titles=(
-                    "Equipment Damage vs Speed", 
-                    "Track Damage vs Speed",
-                    "Fatalities vs Speed",
-                    "Injuries vs Speed"
-                ),
-                shared_xaxes=False,
-                shared_yaxes=False
+            matrix_title_suffix = ""
+            matrix_data = filtered_data.copy()
+
+        # Define columns to include in the scatter matrix
+        matrix_cols = ["trnspd", "eqpdmg", "trkdmg", "caskld", "casinj"]
+        matrix_data = matrix_data.dropna(subset=matrix_cols)
+
+        if matrix_data.empty:
+            st.warning("No data available for the scatter matrix with the selected filters.")
+        else:
+            fig_matrix = px.scatter_matrix(
+                matrix_data,
+                dimensions=matrix_cols,
+                color=map_color_dimension,              # Color by the selected dimension
+                color_discrete_map=color_map,           # Use same colors as multi-scatter
+                title=f"Scatter Plot Matrix{matrix_title_suffix}",
+                labels={col: col for col in matrix_cols}
             )
 
-            #Collect categories for legend
-            used_categories = set()
-            unique_categories = chart_data[map_color_dimension].unique()
-
-            for cat_val in unique_categories:
-                subdf = chart_data[chart_data[map_color_dimension] == cat_val]
-                cat_color = color_map.get(cat_val, "#808080")
-
-                show_legend = cat_val not in used_categories
-
-                # Equipment vs Speed
-                eqp_trace = go.Scatter(
-                    x=subdf["trnspd"],
-                    y=subdf["eqpdmg"],
-                    mode="markers",
-                    marker=dict(color=cat_color, size=7),
-                    text=subdf["description"],
-                    hovertemplate=(
-                        "Speed: %{x} mph<br>"
-                        "Equipment Damage: $%{y}<br>"
-                        f"{map_color_dimension}: {cat_val}<br>"
-                        "Lat: %{meta[0]}<br>"
-                        "Lon: %{meta[1]}<extra></extra>"
-                    ),
-                    customdata=[cat_val]*len(subdf),
-                    meta=list(zip(subdf["latitude"], subdf["longitud"])),
-                    name=str(cat_val),
-                    legendgroup=str(cat_val),
-                    showlegend=False
-                )
-                fig.add_trace(eqp_trace, row=1, col=1)
-
-                # Track vs Speed
-                trk_trace = go.Scatter(
-                    x=subdf["trnspd"],
-                    y=subdf["trkdmg"],
-                    mode="markers",
-                    marker=dict(color=cat_color, size=7),
-                    text=subdf["description"],
-                    hovertemplate=(
-                        "Speed: %{x} mph<br>"
-                        "Track Damage: $%{y}<br>"
-                        f"{map_color_dimension}: {cat_val}<br>"
-                        "Lat: %{meta[0]}<br>"
-                        "Lon: %{meta[1]}<extra></extra>"
-                    ),
-                    customdata=[cat_val]*len(subdf),
-                    meta=list(zip(subdf["latitude"], subdf["longitud"])),
-                    name=str(cat_val),
-                    legendgroup=str(cat_val),
-                    showlegend=False
-                )
-                fig.add_trace(trk_trace, row=1, col=2)
-
-                # Fatalities vs Speed
-                fat_trace = go.Scatter(
-                    x=subdf["trnspd"],
-                    y=subdf["caskld"],
-                    mode="markers",
-                    marker=dict(color=cat_color, size=7),
-                    text=subdf["description"],
-                    hovertemplate=(
-                        "Speed: %{x} mph<br>"
-                        "Fatalities: %{y}<br>"
-                        f"{map_color_dimension}: {cat_val}<br>"
-                        "Lat: %{meta[0]}<br>"
-                        "Lon: %{meta[1]}<extra></extra>"
-                    ),
-                    customdata=[cat_val]*len(subdf),
-                    meta=list(zip(subdf["latitude"], subdf["longitud"])),
-                    name=str(cat_val),
-                    legendgroup=str(cat_val),
-                    showlegend=False
-                )
-                fig.add_trace(fat_trace, row=2, col=1)
-
-                # Injuries vs Speed
-                inj_trace = go.Scatter(
-                    x=subdf["trnspd"],
-                    y=subdf["casinj"],
-                    mode="markers",
-                    marker=dict(color=cat_color, size=7),
-                    text=subdf["description"],
-                    hovertemplate=(
-                        "Speed: %{x} mph<br>"
-                        "Injuries: %{y}<br>"
-                        f"{map_color_dimension}: {cat_val}<br>"
-                        "Lat: %{meta[0]}<br>"
-                        "Lon: %{meta[1]}<extra></extra>"
-                    ),
-                    customdata=[cat_val]*len(subdf),
-                    meta=list(zip(subdf["latitude"], subdf["longitud"])),
-                    name=str(cat_val),
-                    legendgroup=str(cat_val),
-                    showlegend=show_legend
-                )
-                fig.add_trace(inj_trace, row=2, col=2)
-
-                # Update used categories after adding all traces for this category
-                used_categories.add(cat_val)
-
-            #Highlight selected incident if any
-            if st.session_state["selected_incident"] is not None:
-                hilat, hilon = st.session_state["selected_incident"]
-                row_match = chart_data[
-                    (chart_data["latitude"] == hilat) & (chart_data["longitud"] == hilon)
-                ]
-                if not row_match.empty:
-                    r = row_match.iloc[0]
-                    highlight_x_eqp = r["trnspd"]
-                    highlight_y_eqp = r["eqpdmg"]
-                    highlight_x_trk = r["trnspd"]
-                    highlight_y_trk = r["trkdmg"]
-                    highlight_x_fat = r["trnspd"]
-                    highlight_y_fat = r["caskld"]
-                    highlight_x_inj = r["trnspd"]
-                    highlight_y_inj = r["casinj"]
-
-                    # star markers
-                    fig.add_trace(go.Scatter(
-                        x=[highlight_x_eqp],
-                        y=[highlight_y_eqp],
-                        mode="markers",
-                        marker=dict(size=15, symbol="star", color="yellow"),
-                        name="Selected Incident",
-                        showlegend=False
-                    ), row=1, col=1)
-
-                    fig.add_trace(go.Scatter(
-                        x=[highlight_x_trk],
-                        y=[highlight_y_trk],
-                        mode="markers",
-                        marker=dict(size=15, symbol="star", color="yellow"),
-                        name="Selected Incident",
-                        showlegend=False
-                    ), row=1, col=2)
-
-                    fig.add_trace(go.Scatter(
-                        x=[highlight_x_fat],
-                        y=[highlight_y_fat],
-                        mode="markers",
-                        marker=dict(size=15, symbol="star", color="yellow"),
-                        name="Selected Incident",
-                        showlegend=False
-                    ), row=2, col=1)
-
-                    fig.add_trace(go.Scatter(
-                        x=[highlight_x_inj],
-                        y=[highlight_y_inj],
-                        mode="markers",
-                        marker=dict(size=15, symbol="star", color="yellow"),
-                        name="Selected Incident",
-                        showlegend=False
-                    ), row=2, col=2)
-
-            #Update axes titles
-            fig.update_xaxes(title_text="Train Speed (mph)", row=1, col=1)
-            fig.update_yaxes(title_text="Equipment Damage ($)", row=1, col=1)
-            fig.update_xaxes(title_text="Train Speed (mph)", row=1, col=2)
-            fig.update_yaxes(title_text="Track Damage ($)", row=1, col=2)
-            fig.update_xaxes(title_text="Train Speed (mph)", row=2, col=1)
-            fig.update_yaxes(title_text="Killed", row=2, col=1)
-            fig.update_xaxes(title_text="Train Speed (mph)", row=2, col=2)
-            fig.update_yaxes(title_text="Injuries", row=2, col=2)
-
-            fig.update_layout(
-                title_text=f"Damage, Fatalities & Injuries vs. Speed{scatter_title_suffix}",
-                plot_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
-                paper_bgcolor='#1E1E1E' if st.session_state["theme"] == "dark" else '#FFFFFF',
-                font_color='#FFFFFF' if st.session_state["theme"] == "dark" else '#000000',
-                hovermode="closest",
-                clickmode="event+select",
-                legend=dict(
-                    x=1.02, y=1.0,
-                    xanchor="left", yanchor="top",
-                    title=f"{map_color_dimension}"
-                )
+            fig_matrix.update_layout(
+                plot_bgcolor='#1E1E1E' if st.session_state.get("theme") == "dark" else '#FFFFFF',
+                paper_bgcolor='#1E1E1E' if st.session_state.get("theme") == "dark" else '#FFFFFF',
+                font_color='#FFFFFF' if st.session_state.get("theme") == "dark" else '#000000'
             )
 
-            st.markdown("**Click any point to zoom the map to that incident.**")
+            st.plotly_chart(fig_matrix, use_container_width=True)
+    # Option for Standard Multi-Scatter Plots
+    elif vis_subtype == "Standard Multi-Scatter":
+        st.markdown("## Standard Multi-Scatter Plots: Damage, Fatalities, Injuries vs. Selected X-Axis Variable")
 
-            #plotly_events to capture scatter clicks
-            selected_points = plotly_events(
-                fig,
-                click_event=True,
-                hover_event=False,
-                select_event=False,
-                override_height=800,
-                override_width="100%"
-            )
+        #Define available X-axis options mapping
+        x_axis_options = {
+            "Train Speed": "trnspd",
+            "Equipment Damage": "eqpdmg",
+            "Track Damage": "trkdmg",
+            "Fatalities": "caskld",
+            "Injuries": "casinj"
+        }
 
-            #If user clicked a point, center the map at that incident
-            if selected_points:
-                point_index = selected_points[0]["pointIndex"]
-                trace_index = selected_points[0]["curveNumber"]
-                lat_val = float(fig.data[trace_index].meta[point_index][0])
-                lon_val = float(fig.data[trace_index].meta[point_index][1])
-                st.session_state["selected_incident"] = (lat_val, lon_val)
-                #If in State Mode, switch to Incident mode
-                if st.session_state["mode"] == "State Details":
-                    st.session_state["mode"] = "Incident Details"
-                st.info(f"Switched to 'Incident Details' mode and centered map at: (lat={lat_val}, lon={lon_val}).")
+        #Add a selection widget for X-axis variable
+        selected_x_label = st.selectbox("Select X-axis variable:", list(x_axis_options.keys()))
+        x_axis_column = x_axis_options[selected_x_label]
 
-            #Button to clear incident filter
-            if st.button("Clear Incident Filter"):
-                st.session_state["selected_incident"] = None
-                st.info("Incident filter cleared. Map is reset to the default view.")
+        #If in State mode and a state is selected, limit data to that state
+        if st.session_state.get("mode") == "State Details" and st.session_state.get("clicked_state"):
+            scatter_title_suffix = f" in {st.session_state['clicked_state']}"
+            chart_data = filtered_data[
+                filtered_data['state_name'] == st.session_state["clicked_state"]
+            ]
+        else:
+            scatter_title_suffix = ""
+            chart_data = filtered_data.copy()
 
+        if chart_data.empty:
+            st.warning("No data available for the selected filters.")
+        else:
+            needed_cols = [x_axis_column, "eqpdmg", "trkdmg", "caskld", "casinj",
+                           "latitude", "longitud", map_color_dimension, "description"]
+            chart_data = chart_data.dropna(subset=needed_cols)
+
+            if chart_data.empty:
+                st.warning("No data to plot on the scatter charts with the current selections.")
+            else:
+                fig = make_subplots(
+                    rows=2, cols=2, 
+                    subplot_titles=(
+                        "Equipment Damage vs X-Axis", 
+                        "Track Damage vs X-Axis",
+                        "Fatalities vs X-Axis",
+                        "Injuries vs X-Axis"
+                    ),
+                    shared_xaxes=False,
+                    shared_yaxes=False
+                )
+
+                used_categories = set()
+                unique_categories = chart_data[map_color_dimension].unique()
+
+                for cat_val in unique_categories:
+                    subdf = chart_data[chart_data[map_color_dimension] == cat_val]
+                    cat_color = color_map.get(cat_val, "#808080")
+                    show_legend = cat_val not in used_categories
+
+                    # Equipment Damage vs Selected X-axis
+                    eqp_trace = go.Scatter(
+                        x=subdf[x_axis_column],
+                        y=subdf["eqpdmg"],
+                        mode="markers",
+                        marker=dict(color=cat_color, size=7),
+                        text=subdf["description"],
+                        hovertemplate=(
+                            f"{selected_x_label}: %{{x}}<br>"
+                            "Equipment Damage: $%{y}<br>"
+                            f"{map_color_dimension}: {cat_val}<br>"
+                            "Lat: %{meta[0]}<br>"
+                            "Lon: %{meta[1]}<extra></extra>"
+                        ),
+                        customdata=[cat_val]*len(subdf),
+                        meta=list(zip(subdf["latitude"], subdf["longitud"])),
+                        name=str(cat_val),
+                        legendgroup=str(cat_val),
+                        showlegend=False
+                    )
+                    fig.add_trace(eqp_trace, row=1, col=1)
+
+                    #Track Damage vs Selected X-axis
+                    trk_trace = go.Scatter(
+                        x=subdf[x_axis_column],
+                        y=subdf["trkdmg"],
+                        mode="markers",
+                        marker=dict(color=cat_color, size=7),
+                        text=subdf["description"],
+                        hovertemplate=(
+                            f"{selected_x_label}: %{{x}}<br>"
+                            "Track Damage: $%{y}<br>"
+                            f"{map_color_dimension}: {cat_val}<br>"
+                            "Lat: %{meta[0]}<br>"
+                            "Lon: %{meta[1]}<extra></extra>"
+                        ),
+                        customdata=[cat_val]*len(subdf),
+                        meta=list(zip(subdf["latitude"], subdf["longitud"])),
+                        name=str(cat_val),
+                        legendgroup=str(cat_val),
+                        showlegend=False
+                    )
+                    fig.add_trace(trk_trace, row=1, col=2)
+
+                    #Fatalities vs Selected X-axis
+                    fat_trace = go.Scatter(
+                        x=subdf[x_axis_column],
+                        y=subdf["caskld"],
+                        mode="markers",
+                        marker=dict(color=cat_color, size=7),
+                        text=subdf["description"],
+                        hovertemplate=(
+                            f"{selected_x_label}: %{{x}}<br>"
+                            "Fatalities: %{y}<br>"
+                            f"{map_color_dimension}: {cat_val}<br>"
+                            "Lat: %{meta[0]}<br>"
+                            "Lon: %{meta[1]}<extra></extra>"
+                        ),
+                        customdata=[cat_val]*len(subdf),
+                        meta=list(zip(subdf["latitude"], subdf["longitud"])),
+                        name=str(cat_val),
+                        legendgroup=str(cat_val),
+                        showlegend=False
+                    )
+                    fig.add_trace(fat_trace, row=2, col=1)
+
+                    #Injuries vs Selected X-axis
+                    inj_trace = go.Scatter(
+                        x=subdf[x_axis_column],
+                        y=subdf["casinj"],
+                        mode="markers",
+                        marker=dict(color=cat_color, size=7),
+                        text=subdf["description"],
+                        hovertemplate=(
+                            f"{selected_x_label}: %{{x}}<br>"
+                            "Injuries: %{y}<br>"
+                            f"{map_color_dimension}: {cat_val}<br>"
+                            "Lat: %{meta[0]}<br>"
+                            "Lon: %{meta[1]}<extra></extra>"
+                        ),
+                        customdata=[cat_val]*len(subdf),
+                        meta=list(zip(subdf["latitude"], subdf["longitud"])),
+                        name=str(cat_val),
+                        legendgroup=str(cat_val),
+                        showlegend=show_legend
+                    )
+                    fig.add_trace(inj_trace, row=2, col=2)
+
+                    used_categories.add(cat_val)
+
+                #Highlight selected incident if any
+                if st.session_state.get("selected_incident") is not None:
+                    hilat, hilon = st.session_state["selected_incident"]
+                    row_match = chart_data[
+                        (chart_data["latitude"] == hilat) & (chart_data["longitud"] == hilon)
+                    ]
+                    if not row_match.empty:
+                        r = row_match.iloc[0]
+                        highlight_x = r[x_axis_column]
+                        highlight_y_eqp = r["eqpdmg"]
+                        highlight_y_trk = r["trkdmg"]
+                        highlight_y_fat = r["caskld"]
+                        highlight_y_inj = r["casinj"]
+
+                        fig.add_trace(go.Scatter(
+                            x=[highlight_x],
+                            y=[highlight_y_eqp],
+                            mode="markers",
+                            marker=dict(size=15, symbol="star", color="yellow"),
+                            name="Selected Incident",
+                            showlegend=False
+                        ), row=1, col=1)
+
+                        fig.add_trace(go.Scatter(
+                            x=[highlight_x],
+                            y=[highlight_y_trk],
+                            mode="markers",
+                            marker=dict(size=15, symbol="star", color="yellow"),
+                            name="Selected Incident",
+                            showlegend=False
+                        ), row=1, col=2)
+
+                        fig.add_trace(go.Scatter(
+                            x=[highlight_x],
+                            y=[highlight_y_fat],
+                            mode="markers",
+                            marker=dict(size=15, symbol="star", color="yellow"),
+                            name="Selected Incident",
+                            showlegend=False
+                        ), row=2, col=1)
+
+                        fig.add_trace(go.Scatter(
+                            x=[highlight_x],
+                            y=[highlight_y_inj],
+                            mode="markers",
+                            marker=dict(size=15, symbol="star", color="yellow"),
+                            name="Selected Incident",
+                            showlegend=False
+                        ), row=2, col=2)
+
+                # Update axes titles with dynamic X-axis label
+                fig.update_xaxes(title_text=f"{selected_x_label}", row=1, col=1)
+                fig.update_yaxes(title_text="Equipment Damage ($)", row=1, col=1)
+                fig.update_xaxes(title_text=f"{selected_x_label}", row=1, col=2)
+                fig.update_yaxes(title_text="Track Damage ($)", row=1, col=2)
+                fig.update_xaxes(title_text=f"{selected_x_label}", row=2, col=1)
+                fig.update_yaxes(title_text="Fatalities", row=2, col=1)
+                fig.update_xaxes(title_text=f"{selected_x_label}", row=2, col=2)
+                fig.update_yaxes(title_text="Injuries", row=2, col=2)
+
+                fig.update_layout(
+                    title_text=f"Damage, Fatalities & Injuries vs. {selected_x_label}{scatter_title_suffix}",
+                    plot_bgcolor='#1E1E1E' if st.session_state.get("theme") == "dark" else '#FFFFFF',
+                    paper_bgcolor='#1E1E1E' if st.session_state.get("theme") == "dark" else '#FFFFFF',
+                    font_color='#FFFFFF' if st.session_state.get("theme") == "dark" else '#000000',
+                    hovermode="closest",
+                    clickmode="event+select",
+                    legend=dict(
+                        x=1.02, y=1.0,
+                        xanchor="left", yanchor="top",
+                        title=f"{map_color_dimension}"
+                    )
+                )
+
+                st.markdown("**Click any point to zoom the map to that incident.**")
+
+                selected_points = plotly_events(
+                    fig,
+                    click_event=True,
+                    hover_event=False,
+                    select_event=False,
+                    override_height=800,
+                    override_width="100%"
+                )
+
+                if selected_points:
+                    point_index = selected_points[0]["pointIndex"]
+                    trace_index = selected_points[0]["curveNumber"]
+                    lat_val = float(fig.data[trace_index].meta[point_index][0])
+                    hilon = float(fig.data[trace_index].meta[point_index][1])
+                    st.session_state["selected_incident"] = (lat_val, hilon)
+                    if st.session_state.get("mode") == "State Details":
+                        st.session_state["mode"] = "Incident Details"
+                    st.info(f"Switched to 'Incident Details' mode and centered map at: (lat={lat_val}, lon={hilon}).")
+
+                if st.button("Clear Incident Filter"):
+                    st.session_state["selected_incident"] = None
+                    st.info("Incident filter cleared. Map is reset to the default view.")
 #2) Radar Plot
 elif visualization_mode == "Radar Plot":
     st.markdown("## Radar Plot")
@@ -1080,33 +1132,7 @@ with st.expander("ℹ️ Help: How to Use the Railroad Incident Map"):
     - **State Details**: Markers represent states (just placeholders in this example).  
       - Click a state marker to see aggregate stats.  
       - "Radar Plot" in State Mode compares states.  
-
-    **Visualization Mode**  
-    - **Multi-Scatter Plots**:  
-      - 2x2 grid of damage/fatalities/injuries vs. speed.  
-      - Clicking a point re-centers the map on that incident.  
-      - If in State Mode, you auto-switch to Incident Mode.  
-    - **Radar Plot**:  
-      - Compare states or see a single incident’s metrics in context of min–max.  
-    - **Line Chart**:  
-      - Uses integer `year` and `month` directly—no datetime conversion.  
-      - Shows either total incidents or breaks out by weather condition.  
-    - **Bar Chart**:  
-      - Shows incident counts by state.  
-
-    **Filters**  
-    - Speed Category, Weather, Death Category, Injury Category, Damage Category  
-    - **Start Year & End Year** for filtering by a range of years.
-
-    **Clustering & Heatmap**  
-    - Check these boxes for clustering or a heatmap overlay.  
-
-    **Theme Toggle**  
-    - Toggle between dark and light themes.
-
-    **Clearing Incidents**  
-    - The "Clear Incident Filter" button in Multi-Scatter resets any selected incident.
     """)
 
 # Instructions to run the app
-# streamlit run "C:\Users\yongj\OneDrive\Desktop\Visualization Project\dynamic_filters_map.py"
+# streamlit run "path to dynamic_filters_map.py"
